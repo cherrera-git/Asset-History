@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+    <style>
+        /* Modern UI Reset & Body Styling */
+        body, html {
+            margin: 0;
+            padding: 0;
+            font-family: 'Roboto', sans-serif;
+            background-color: #eef2f3; /* New calming background color */
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Main container for consistent layout */
+        .dialog-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px; /* Spacing between elements */
+            width: 90%;
+            max-width: 600px;
+        }
+
+        /* Styling for form labels */
+        label {
+            font-weight: 500;
+            color: #333;
+            width: 100%;
+            text-align: left;
+        }
+
+        /* Styling for text inputs */
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            box-sizing: border-box;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #4facfe;
+        }
+        
+        /* Container for buttons to sit side-by-side */
+        .button-group {
+            display: flex;
+            width: 100%;
+            gap: 10px;
+        }
+
+        /* Base Button Style */
+        button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-grow: 1;
+            box-sizing: border-box;
+            margin: 0 !important;
+            padding: 15px;
+            font-size: 16px;
+            font-weight: 500;
+            border-radius: 8px;
+            border: none;
+            color: #333;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            background-image: linear-gradient(to top, #fdfbfb 0%, #ebedee 100%);
+        }
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        
+        /* Message Styling - Higher contrast for readability */
+        #message {
+            padding: 18px;
+            border-radius: 8px;
+            width: 100%;
+            box-sizing: border-box;
+            text-align: center;
+            font-weight: 500;
+            font-size: 1.05em;
+        }
+        .message-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .message-error {
+            background-color: #f8d7da;
+            color: #58151c;
+            border: 1px solid #f5c6cb;
+        }
+
+        /* Unique Button Colors & Hovers */
+        .submit-btn {
+            background-image: linear-gradient(to right, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .secondary-btn:hover {
+            background-image: linear-gradient(to top, #d3d3d3 0%, #8a8a8a 100%);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="dialog-container">
+        <form id="returnForm" style="width: 100%; display: flex; flex-direction: column; gap: 15px;">
+            <div>
+                <label for="assetId">Asset ID</label>
+                <input type="text" id="assetId" name="assetId" value="<?= assetId ?>" required>
+            </div>
+            <div class="button-group">
+                <button type="submit" class="submit-btn">Return Asset</button>
+                <button type="button" class="secondary-btn" onclick="openDialog(this, 'showMainMenuDialog')">Back to Menu</button>
+            </div>
+        </form>
+
+        <div id="message" style="display: none;"></div>
+
+        <div id="actionButtons" style="display: none; width: 100%; flex-direction: column; gap: 15px;">
+             <div class="button-group">
+                <button class="submit-btn" onclick="resetForm()">Return Another</button>
+                <button class="secondary-btn" onclick="openDialog(this, 'showMainMenuDialog')">Main Menu</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        var isSubmitting = false; // Flag to prevent multiple submissions
+
+        function openDialog(button, functionName) {
+            var buttons = document.querySelectorAll('.dialog-container button');
+            buttons.forEach(function(btn) { btn.disabled = true; });
+            if (button) { button.textContent = 'Loading...'; }
+
+            google.script.run
+                .withSuccessHandler(function() {
+                    google.script.host.close();
+                })
+                .withFailureHandler(function(error) {
+                    alert('Could not open dialog: ' + error.message);
+                    window.location.reload(); // Reload dialog on failure to reset state
+                })
+                [functionName]();
+        }
+
+        function resetForm() {
+            document.getElementById('actionButtons').style.display = 'none';
+            document.getElementById('message').style.display = 'none';
+            document.getElementById('returnForm').style.display = 'flex';
+            document.getElementById('assetId').value = '';
+            document.getElementById('assetId').focus();
+            isSubmitting = false; // Reset submission flag
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            document.getElementById('assetId').focus();
+            
+            // Listen for 'Enter' key on assetId field
+            document.getElementById('assetId').addEventListener('keydown', function(event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault(); // Stop default 'Enter' behavior
+                    // Check if field has a value before submitting
+                    if (document.getElementById('assetId').value) {
+                        document.getElementById('returnForm').dispatchEvent(new Event('submit', { cancelable: true }));
+                    }
+                }
+            });
+        });
+
+        document.getElementById('returnForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            if (isSubmitting) {
+                return; // Don't submit if already submitting
+            }
+            isSubmitting = true; // Set flag
+            
+            var messageDiv = document.getElementById('message');
+            messageDiv.textContent = 'Processing...';
+            messageDiv.className = '';
+            messageDiv.style.display = 'block';
+
+            google.script.run.withSuccessHandler(function(response) {
+                messageDiv.textContent = response;
+                if (response.startsWith('Success')) {
+                    messageDiv.className = 'message-success';
+                } else {
+                    messageDiv.className = 'message-error';
+                }
+                document.getElementById('returnForm').style.display = 'none';
+                document.getElementById('actionButtons').style.display = 'flex';
+            }).processReturnForm(this);
+        });
+    </script>
+</body>
+</html>
