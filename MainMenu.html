@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+    <style>
+        /* Modern UI Reset & Body Styling */
+        body, html {
+            margin: 0;
+            padding: 0;
+            font-family: 'Roboto', sans-serif;
+            background-color: #eef2f3; /* New calming background color */
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Using Flexbox on the container for robust centering */
+        .button-container-wrapper {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+        }
+
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px; /* Spacing between buttons */
+            width: 90%;
+            max-width: 300px;
+        }
+
+        /* Base Button Style */
+        button {
+            display: flex; /* Enables flex properties for centering text */
+            align-items: center; /* Vertical centering */
+            justify-content: center; /* Horizontal centering */
+            width: 100%; /* Make all buttons the same width */
+            box-sizing: border-box; /* Include padding and border in the element's total width and height */
+            margin: 0 !important; /* Forcefully remove any default margin */
+            padding: 20px; /* Increased padding for a taller button */
+            font-size: 18px; /* Larger font size */
+            font-weight: 500;
+            border-radius: 10px;
+            border: none;
+            color: black;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        /* Borrow Button */
+        .borrow-btn {
+            background-image: linear-gradient(to right, #43e97b 0%, #38f9d7 100%);
+        }
+        .borrow-btn:hover {
+            color: white;
+            background-image: linear-gradient(to right, #4facfe 0%, #00f2fe 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        /* Return Button */
+        .return-btn {
+            background-image: linear-gradient(to right, #4facfe 0%, #00f2fe 100%);
+        }
+        .return-btn:hover {
+            color: white;
+            background-image: linear-gradient(to right, #43e97b 0%, #38f9d7 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        /* Find Button */
+        .find-btn {
+            background-image: linear-gradient(to right, #f8c76b 0%, #f79d57 100%);
+        }
+        .find-btn:hover {
+            color: white;
+            background-image: linear-gradient(to right, #f79d57 0%, #f8c76b 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body>
+    <div class="button-container-wrapper">
+        <div id="buttonContainer" class="button-container">
+            <!-- FIX: The close command is now in a success handler to prevent a race condition -->
+            <button class="borrow-btn" onclick="openDialog(this, 'showBorrowDialog')">Borrow</button>
+            <button class="return-btn" onclick="openDialog(this, 'showReturnDialog')">Return</button>
+            <button class="find-btn" onclick="openDialog(this, 'showFindDialog')">Find</button>
+        </div>
+    </div>
+    <script>
+        function openDialog(button, functionName) {
+            // Disable all buttons to prevent double-clicks
+            var buttons = document.querySelectorAll('#buttonContainer button');
+            buttons.forEach(function(btn) {
+                btn.disabled = true;
+            });
+            button.textContent = 'Loading...';
+
+            google.script.run
+                .withSuccessHandler(function() {
+                    google.script.host.close();
+                })
+                .withFailureHandler(function(error) {
+                    // Re-enable buttons and show error if something goes wrong
+                    alert('Could not open dialog: ' + error.message);
+                    buttons.forEach(function(btn) {
+                        btn.disabled = false;
+                    });
+                    // Restore original button text
+                    if(functionName === 'showBorrowDialog') button.textContent = 'Borrow';
+                    if(functionName === 'showReturnDialog') button.textContent = 'Return';
+                    if(functionName === 'showFindDialog') button.textContent = 'Find';
+                })
+                [functionName](); // Dynamically call the correct server function
+        }
+    </script>
+</body>
+</html>
