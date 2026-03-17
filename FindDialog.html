@@ -114,6 +114,24 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
+
+        /* QR Hint Image Styling */
+        .qr-hint-img {
+            width: 46px;
+            height: 46px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            background-color: #fff;
+        }
+        
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -121,7 +139,10 @@
         <form id="findForm" style="width: 100%; display: flex; flex-direction: column; gap: 15px;">
             <div>
                 <label for="assetId">Asset ID</label>
-                <input type="text" id="assetId" name="assetId" required>
+                <div class="input-row">
+                    <input type="text" id="assetId" name="assetId" required style="flex-grow: 1;">
+                    <img src="https://drive.google.com/uc?export=view&id=16lGNeu2KQRT66rYNb0AoSRsBCxIhwQbL" alt="Asset QR Location" title="Scan Asset ID QR here" class="qr-hint-img" onerror="this.style.display='none'">
+                </div>
             </div>
             <div class="button-group">
                 <button type="submit" class="submit-btn">Find Asset</button>
