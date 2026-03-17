@@ -4,7 +4,8 @@ const MASTER_SHEET_NAME = "ToExcel_MTL_AssetManagementTable";
 
 // *** CONFIGURATION FOR EXTERNAL JOB DB ***
 const EXTERNAL_JOB_DB_ID = '1vGPJvUOgGu7xEehsXu82QFM04qdo513pW8r3XFnzJRM'; 
-const EXTERNAL_JOB_DB_SHEET_NAME = 'OOR'; 
+// Define multiple sheets to search through. Add or remove sheet names as necessary.
+const EXTERNAL_JOB_DB_SHEET_NAMES = ['OOR', 'New Orders', '2026 WK1 to WK52']; 
 
 /**
  * onOpen
@@ -49,29 +50,36 @@ function showImportDialog() {
 }
 
 /**
- * Fetches Item No and Project Coordinator from external sheet based on Job Order
+ * Fetches Item No and Project Coordinator from external sheets based on Job Order
  */
 function getJobDetails(jobOrder) {
   if (!jobOrder) return null;
   
   try {
     const ss = SpreadsheetApp.openById(EXTERNAL_JOB_DB_ID);
-    const sheet = ss.getSheetByName(EXTERNAL_JOB_DB_SHEET_NAME);
-    if (!sheet) return { error: "External sheet '" + EXTERNAL_JOB_DB_SHEET_NAME + "' not found. Check the tab name." };
     
-    const data = sheet.getDataRange().getValues();
-    
-    for (let i = 1; i < data.length; i++) {
-      // Check Index 7 (Job Order)
-      if (data[i][7] && data[i][7].toString().toUpperCase() === jobOrder.toUpperCase()) {
-        return {
-          found: true,
-          itemNo: data[i][14],           // Index 14 (Item No.)
-          projectCoordinator: data[i][19] // Index 19 (Project Coordinator)
-        };
+    // Iterate through all designated external sheets
+    for (const sheetName of EXTERNAL_JOB_DB_SHEET_NAMES) {
+      const sheet = ss.getSheetByName(sheetName);
+      
+      // If a specified sheet is not found, skip to the next one
+      if (!sheet) continue;
+      
+      const data = sheet.getDataRange().getValues();
+      
+      for (let i = 1; i < data.length; i++) {
+        // Check Index 7 (Job Order)
+        if (data[i][7] && data[i][7].toString().toUpperCase() === jobOrder.toUpperCase()) {
+          return {
+            found: true,
+            itemNo: data[i][14],           // Index 14 (Item No.)
+            projectCoordinator: data[i][19] // Index 19 (Project Coordinator)
+          };
+        }
       }
     }
     
+    // If the loop completes without finding the job order in any sheet
     return { found: false };
     
   } catch (e) {
@@ -103,8 +111,6 @@ function processBorrowForm(formObject) {
       const row = borrowData[i];
       // Check Col D (Index 3) for ID and Col G (Index 6) for Return Date
       if (row[3].toString().toUpperCase() === assetId && row[6] === "") { 
-        // DISABLED REDIRECT:
-        // showReturnDialog(assetId); 
         return `Error: Asset ID '${assetId}' is already borrowed. Please return it first.`;
       }
     }
