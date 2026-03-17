@@ -129,8 +129,8 @@
 
         /* QR Hint Image Styling */
         .qr-hint-img {
-            width: 46px;
-            height: 46px;
+            width: 100px;
+            height: 100px;
             object-fit: cover;
             border-radius: 6px;
             border: 1px solid #ccc;
@@ -149,13 +149,11 @@
 <body>
     <div class="dialog-container">
         <form id="borrowForm" style="width: 100%; display: flex; flex-direction: column; gap: 10px;">
-            <!-- Removed PC Name Input -->
-            
             <div>
                 <label for="jobOrder">Job Order Number (Scan)</label>
                 <div class="input-row">
                     <input type="text" id="jobOrder" name="jobOrder" placeholder="Scan Job QR..." required style="flex-grow: 1;">
-                    <img src="https://drive.google.com/uc?export=view&id=1DIl8k-w33YZ81lerNiqqx_zGT50qDsgt" alt="Job QR Location" title="Scan Job Order QR here" class="qr-hint-img" onerror="this.style.display='none'">
+                    <img src="https://lh3.googleusercontent.com/d/1DIl8k-w33YZ81lerNiqqx_zGT50qDsgt" alt="Job QR Location" title="Scan Job Order QR here" class="qr-hint-img">
                 </div>
             </div>
             
@@ -175,7 +173,7 @@
                 <label for="assetId">Asset ID (Scan)</label>
                 <div class="input-row">
                     <input type="text" id="assetId" name="assetId" placeholder="Scan Asset QR..." required style="flex-grow: 1;">
-                    <img src="https://drive.google.com/uc?export=view&id=16lGNeu2KQRT66rYNb0AoSRsBCxIhwQbL" alt="Asset QR Location" title="Scan Asset ID QR here" class="qr-hint-img" onerror="this.style.display='none'">
+                    <img src="https://lh3.googleusercontent.com/d/16lGNeu2KQRT66rYNb0AoSRsBCxIhwQbL" alt="Asset QR Location" title="Scan Asset ID QR here" class="qr-hint-img">
                 </div>
             </div>
             
