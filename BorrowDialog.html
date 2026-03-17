@@ -1,130 +1,25 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <base target="_top">
-    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
-    <style>
-        /* Modern UI Reset & Body Styling */
-        body, html {
-            margin: 0;
-            padding: 0;
-            font-family: 'Roboto', sans-serif;
-            background-color: #eef2f3;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .dialog-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 15px;
-            width: 90%;
-            max-width: 600px;
-        }
-
-        label {
-            font-weight: 500;
-            color: #333;
-            width: 100%;
-            text-align: left;
-            margin-bottom: 5px;
-            display: block;
-        }
-
-        input[type="text"] {
-            width: 100%;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #ccc;
-            box-sizing: border-box;
-            font-size: 16px;
-            transition: border-color 0.2s;
-        }
-        input[type="text"]:focus {
-            outline: none;
-            border-color: #4facfe;
-            box-shadow: 0 0 5px rgba(79, 172, 254, 0.3);
-        }
-        
-        /* Styling for Readonly inputs */
-        input[readonly] {
-            background-color: #e9ecef;
-            border: 1px solid #ced4da;
-            color: #495057;
-            cursor: not-allowed;
-        }
-
-        .button-group {
-            display: flex;
-            width: 100%;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        button {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-grow: 1;
-            box-sizing: border-box;
-            margin: 0 !important;
-            padding: 15px;
-            font-size: 16px;
-            font-weight: 500;
-            border-radius: 8px;
-            border: none;
-            color: #333;
-            cursor: pointer;
-            transition: all 0.2s ease-in-out;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            background-image: linear-gradient(to top, #fdfbfb 0%, #ebedee 100%);
-        }
-        button:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-        
-        #message {
-            padding: 18px;
-            border-radius: 8px;
-            width: 100%;
-            box-sizing: border-box;
-            text-align: center;
-            font-weight: 500;
-            font-size: 1.05em;
-        }
-        .message-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .message-error {
-            background-color: #f8d7da;
-            color: #58151c;
-            border: 1px solid #f5c6cb;
-        }
-
-        .submit-btn {
-            background-image: linear-gradient(to right, #43e97b 0%, #38f9d7 100%);
-            color: white;
-        }
-        .submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        .secondary-btn:hover {
-            background-image: linear-gradient(to top, #d3d3d3 0%, #8a8a8a 100%);
-            color: white;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        
+<!-- ... existing code ... -->
         /* Highlight scanning fields */
         #jobOrder, #assetId {
             border-left: 4px solid #43e97b;
+        }
+
+        /* QR Hint Image Styling */
+        .qr-hint-img {
+            width: 46px;
+            height: 46px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            background-color: #fff;
+        }
+        
+        .input-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            width: 100%;
         }
     </style>
 </head>
@@ -135,15 +30,15 @@
             
             <div>
                 <label for="jobOrder">Job Order Number (Scan)</label>
-                <input type="text" id="jobOrder" name="jobOrder" placeholder="Scan Job QR..." required>
+                <div class="input-row">
+                    <input type="text" id="jobOrder" name="jobOrder" placeholder="Scan Job QR..." required style="flex-grow: 1;">
+                    <!-- Insert Google Drive File ID for job_id.jpeg below -->
+                    <img src="https://drive.google.com/uc?export=view&id=1DIl8k-w33YZ81lerNiqqx_zGT50qDsgt" alt="Job QR Location" title="Scan Job Order QR here" class="qr-hint-img" onerror="this.style.display='none'">
+                </div>
             </div>
             
             <!-- READONLY FIELDS (Populated by Job Scan) -->
-            <div style="display: flex; gap: 10px;">
-                <div style="flex: 1;">
-                    <label for="itemNo">Item No.</label>
-                    <input type="text" id="itemNo" name="itemNo" readonly placeholder="...">
-                </div>
+<!-- ... existing code ... -->
                 <div style="flex: 1;">
                     <label for="projectCoordinator">Project Coord.</label>
                     <input type="text" id="projectCoordinator" name="projectCoordinator" readonly placeholder="...">
@@ -152,166 +47,13 @@
 
             <div>
                 <label for="assetId">Asset ID (Scan)</label>
-                <input type="text" id="assetId" name="assetId" placeholder="Scan Asset QR..." required>
+                <div class="input-row">
+                    <input type="text" id="assetId" name="assetId" placeholder="Scan Asset QR..." required style="flex-grow: 1;">
+                    <!-- Insert Google Drive File ID for asset_id.jpeg below -->
+                    <img src="https://drive.google.com/uc?export=view&id=16lGNeu2KQRT66rYNb0AoSRsBCxIhwQbL" alt="Asset QR Location" title="Scan Asset ID QR here" class="qr-hint-img" onerror="this.style.display='none'">
+                </div>
             </div>
             
             <div class="button-group">
                 <button type="submit" class="submit-btn">Borrow Asset</button>
-                <button type="button" class="secondary-btn" onclick="openDialog(this, 'showMainMenuDialog')">Back to Menu</button>
-            </div>
-        </form>
-
-        <div id="message" style="display: none;"></div>
-        
-        <div id="actionButtons" style="display: none; width: 100%; flex-direction: column; gap: 15px;">
-            <div class="button-group">
-                <button class="submit-btn" onclick="resetForm()">Borrow Another</button>
-                <button class="secondary-btn" onclick="openDialog(this, 'showMainMenuDialog')">Main Menu</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        var isSubmitting = false;
-
-        function openDialog(button, functionName) {
-            console.log("Navigating to dialog:", functionName);
-            var buttons = document.querySelectorAll('.dialog-container button');
-            buttons.forEach(function(btn) { btn.disabled = true; });
-            if (button) { button.textContent = 'Loading...'; }
-
-            google.script.run
-                .withSuccessHandler(function() {
-                    console.log("Navigation successful");
-                    google.script.host.close();
-                })
-                .withFailureHandler(function(error) {
-                    console.error("Navigation failed:", error);
-                    alert('Could not open dialog: ' + error.message);
-                    window.location.reload(); 
-                })
-                [functionName]();
-        }
-
-        function resetForm() {
-            console.log("Resetting form state");
-            document.getElementById('actionButtons').style.display = 'none';
-            document.getElementById('message').style.display = 'none';
-            document.getElementById('borrowForm').style.display = 'flex';
-            
-            // Clear inputs
-            document.getElementById('assetId').value = '';
-            document.getElementById('jobOrder').value = '';
-            document.getElementById('itemNo').value = '';
-            document.getElementById('projectCoordinator').value = '';
-            
-            // Focus on Job Order immediately
-            document.getElementById('jobOrder').focus();
-            isSubmitting = false; 
-        }
-
-        document.addEventListener("DOMContentLoaded", function() {
-            // Start focus on Job Order
-            document.getElementById('jobOrder').focus();
-            
-            // NAVIGATION LOGIC
-            document.getElementById('jobOrder').addEventListener('keydown', function(e) {
-                if(e.key === 'Enter') { 
-                    e.preventDefault(); 
-                    console.log("Enter key detected on Job Order. Triggering lookup.");
-                    fetchJobDetails(this.value);
-                }
-            });
-            
-            // Also trigger on blur if manual entry or scan finished
-            document.getElementById('jobOrder').addEventListener('blur', function(e) {
-                if(this.value && !document.getElementById('itemNo').value) {
-                     console.log("Blur event on Job Order. Triggering lookup.");
-                     fetchJobDetails(this.value);
-                }
-            });
-
-            document.getElementById('assetId').addEventListener('keydown', function(e) {
-                // Last field - allow Enter to submit naturally if scanner sends Enter
-            });
-        });
-        
-        function fetchJobDetails(jobOrderVal) {
-             if(!jobOrderVal) return;
-             
-             console.log("Fetching details for Job Order:", jobOrderVal);
-             
-             // Visual cue
-             document.getElementById('itemNo').placeholder = "Loading...";
-             document.getElementById('projectCoordinator').placeholder = "Loading...";
-
-             google.script.run
-             .withSuccessHandler(function(result) {
-                 console.log("Job Details Response:", result);
-
-                 if (result && result.found) {
-                     document.getElementById('itemNo').value = result.itemNo;
-                     document.getElementById('projectCoordinator').value = result.projectCoordinator;
-                     // Focus next field
-                     document.getElementById('assetId').focus();
-                 } else if (result && result.error) {
-                     console.warn("Job Fetch Error (Logical):", result.error);
-                     console.log("Error fetching job: " + result.error);
-                     document.getElementById('assetId').focus(); 
-                 } else {
-                     console.warn("Job not found in database.");
-                     document.getElementById('itemNo').value = "Not Found";
-                     document.getElementById('projectCoordinator').value = "Not Found";
-                     document.getElementById('assetId').focus();
-                 }
-             })
-             .withFailureHandler(function(error) {
-                 console.error("Job Fetch Error (System):", error);
-                 alert("System Error fetching job details: " + error.message);
-             })
-             .getJobDetails(jobOrderVal);
-        }
-
-        // This handles the actual submission
-        document.getElementById('borrowForm').addEventListener('submit', function(event) {
-            event.preventDefault(); // Stop page reload
-            
-            if (isSubmitting) {
-                console.log("Submission blocked: Already in progress.");
-                return; 
-            }
-            isSubmitting = true; 
-            console.log("Submitting Borrow Form...");
-            
-            var messageDiv = document.getElementById('message');
-            messageDiv.textContent = 'Processing...';
-            messageDiv.className = '';
-            messageDiv.style.display = 'block';
-
-            google.script.run
-            .withSuccessHandler(function(response) {
-                console.log("Submission Response:", response);
-                messageDiv.textContent = response;
-                if (response.startsWith('Success')) {
-                    messageDiv.className = 'message-success';
-                } else {
-                    console.error("Submission Failed (Logical):", response);
-                    messageDiv.className = 'message-error';
-                    isSubmitting = false; // RESET SUBMIT LOCK ON LOGICAL ERROR
-                }
-                if (response.startsWith('Success')) {
-                    document.getElementById('borrowForm').style.display = 'none';
-                    document.getElementById('actionButtons').style.display = 'flex';
-                }
-            })
-            .withFailureHandler(function(error) {
-                console.error("Submission Failed (System):", error);
-                messageDiv.textContent = "System Error: " + error.message;
-                messageDiv.className = 'message-error';
-                isSubmitting = false; // Reset lock on critical failure
-            })
-            .processBorrowForm(this);
-        });
-    </script>
-</body>
-</html>
+<!-- ... existing code ... -->
