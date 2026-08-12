@@ -14,23 +14,30 @@
             align-items: center;
             justify-content: center;
             text-align: center;
+            box-sizing: border-box;
         }
         .container {
             display: flex;
             flex-direction: column;
             gap: 15px;
-            width: 90%;
-            max-width: 600px;
+            width: 100%;
+            max-width: 550px;
+        }
+        h3 {
+            margin-top: 0;
+            color: #1a252f;
         }
         p {
-            font-size: 16px;
-            line-height: 1.6;
-            color: #333;
+            font-size: 15px;
+            line-height: 1.5;
+            color: #4a5568;
+            margin: 0;
         }
         .button-group {
             display: flex;
             width: 100%;
             gap: 10px;
+            margin-top: 10px;
         }
         button {
             display: flex;
@@ -38,7 +45,7 @@
             justify-content: center;
             flex-grow: 1;
             box-sizing: border-box;
-            padding: 15px;
+            padding: 14px;
             font-size: 16px;
             font-weight: 500;
             border-radius: 8px;
@@ -50,29 +57,34 @@
             background-image: linear-gradient(to top, #fdfbfb 0%, #ebedee 100%);
         }
         button:disabled {
-            opacity: 0.7;
+            opacity: 0.65;
             cursor: not-allowed;
+            transform: none !important;
         }
         .submit-btn {
             background-image: linear-gradient(to right, #43e97b 0%, #38f9d7 100%);
             color: white;
+            font-weight: 600;
         }
-        .submit-btn:hover {
+        .submit-btn:hover:not(:disabled) {
             transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        .secondary-btn:hover {
+        .secondary-btn:hover:not(:disabled) {
             background-image: linear-gradient(to top, #d3d3d3 0%, #8a8a8a 100%);
             color: white;
             transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
         #message {
-            padding: 18px;
+            padding: 16px;
             border-radius: 8px;
             width: 100%;
             box-sizing: border-box;
             text-align: center;
             font-weight: 500;
-            font-size: 1.05em;
+            font-size: 1em;
+            margin-top: 10px;
         }
         .message-success {
             background-color: #d4edda;
@@ -84,28 +96,39 @@
             color: #58151c;
             border: 1px solid #f5c6cb;
         }
+        .file-input-wrapper {
+            background: white;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px dashed #cbd5e0;
+            transition: border-color 0.2s;
+        }
+        .file-input-wrapper:hover {
+            border-color: #4facfe;
+        }
         input[type="file"] {
             width: 100%;
-            padding: 10px;
-            background: white;
-            border-radius: 8px;
-            border: 1px solid #ccc;
+            font-size: 14px;
+            color: #4a5568;
+            cursor: pointer;
         }
     </style>
 </head>
 <body>
     <div class="container" id="mainContent">
-        <h3>Import New Assets from CSV</h3>
+        <h3>Import New Assets</h3>
         <p>
-            Select your `ToExcel_MTL_AssetManagementTable.csv` file. The script will compare it to your sheet and only add new assets.
+            Select your <strong>CSV</strong> or <strong>TSV</strong> file exported from your asset management system. The script will compare entries and add only new asset records.
             <br><br>
-            This <strong>will not</strong> overwrite any existing asset data and is the safe way to update your master list.
+            <em>Existing assets will remain unchanged.</em>
         </p>
         
-        <input type="file" id="csvFile" accept=".csv">
+        <div class="file-input-wrapper">
+            <input type="file" id="csvFile" accept=".csv,.tsv,.txt">
+        </div>
         
         <div class="button-group">
-            <button id="importButton" class="submit-btn" onclick="importCSV()">Import</button>
+            <button id="importButton" class="submit-btn" onclick="importCSV()">Import File</button>
             <button class="secondary-btn" onclick="google.script.host.close()">Cancel</button>
         </div>
     </div>
@@ -113,43 +136,45 @@
     <div class="container" id="confirmationContent" style="display: none;">
         <h3>Confirm Import</h3>
         <p>
-            Are you sure you want to import new assets from
-            <strong id="fileNameDisplay" style="color: #084298;"></strong>?
+            Ready to import new assets from:
+            <br>
+            <strong id="fileNameDisplay" style="color: #084298; word-break: break-all;"></strong>
             <br><br>
-            This will add new rows to your master sheet but will not overwrite existing assets.
+            New unique rows will be added to the Master Asset table.
         </p>
         <div class="button-group">
-            <button id="confirmImportButton" class="submit-btn" onclick="proceedWithImport()">Yes, Import</button>
+            <button id="confirmImportButton" class="submit-btn" onclick="proceedWithImport()">Yes, Proceed</button>
             <button class="secondary-btn" onclick="cancelImport()">Cancel</button>
         </div>
     </div>
     
-    <div id="message" style="display: none; width: 90%; max-width: 600px;"></div>
+    <div id="message" style="display: none; width: 100%; max-width: 550px;"></div>
     
-    <div id="closeButton" style="display: none; width: 90%; max-width: 600px; margin-top: 15px;">
-        <button class="secondary-btn" style="width: 100%;" onclick="google.script.host.close()">Close</button>
+    <div id="closeButton" style="display: none; width: 100%; max-width: 550px; margin-top: 15px;">
+        <button class="secondary-btn" style="width: 100%;" onclick="google.script.host.close()">Close Dialog</button>
     </div>
 
     <script>
-        var fileToImport = null; // Store file for confirmation
+        var fileToImport = null; // Stored file handle for confirmation workflow
 
         function importCSV() {
-            var file = document.getElementById('csvFile').files[0];
+            var fileInput = document.getElementById('csvFile');
+            var file = fileInput.files[0];
+            var messageDiv = document.getElementById('message');
+
             if (!file) {
-                // Using a simple message, as alert() is blocked in G Suite dialogs
-                var messageDiv = document.getElementById('message');
-                messageDiv.textContent = 'Please select a file first.';
+                messageDiv.textContent = 'Please select a CSV or TSV file first.';
                 messageDiv.className = 'message-error';
                 messageDiv.style.display = 'block';
                 return;
             }
             
-            fileToImport = file; // Store the file
+            fileToImport = file;
             
-            // Show confirmation
+            // Populate confirmation details
             document.getElementById('fileNameDisplay').textContent = file.name;
             document.getElementById('mainContent').style.display = 'none';
-            document.getElementById('message').style.display = 'none'; // Hide any previous error
+            messageDiv.style.display = 'none';
             document.getElementById('confirmationContent').style.display = 'flex';
         }
         
@@ -160,43 +185,47 @@
         }
 
         function proceedWithImport() {
-            if (!fileToImport) {
-                return; // Should not happen, but good to check
-            }
+            if (!fileToImport) return;
 
             var confirmButton = document.getElementById('confirmImportButton');
             var messageDiv = document.getElementById('message');
             
-            // Disable confirm button
+            // Prevent multiple click submissions
             confirmButton.disabled = true;
             confirmButton.textContent = 'Importing...';
             
-            // Show processing message
-            document.getElementById('confirmationContent').style.display = 'none'; // Hide confirmation
-            messageDiv.textContent = 'Processing... please wait.';
+            document.getElementById('confirmationContent').style.display = 'none';
+            messageDiv.textContent = 'Reading file and processing import... please wait.';
             messageDiv.className = '';
             messageDiv.style.display = 'block';
 
             var reader = new FileReader();
             reader.onload = function(e) {
-                var csvText = e.target.result;
+                var fileText = e.target.result;
                 
                 google.script.run
                     .withSuccessHandler(showResult)
                     .withFailureHandler(showError)
-                    .importNewAssets(csvText);
+                    .importNewAssets(fileText);
             };
+
+            reader.onerror = function() {
+                showError({ message: "Failed to read file from local disk." });
+            };
+
             reader.readAsText(fileToImport);
         }
         
         function showResult(response) {
             var messageDiv = document.getElementById('message');
             messageDiv.textContent = response;
-            if (response.startsWith('Import complete')) {
+            
+            if (response && response.startsWith('Import complete')) {
                 messageDiv.className = 'message-success';
             } else {
                 messageDiv.className = 'message-error';
             }
+            
             document.getElementById('mainContent').style.display = 'none';
             document.getElementById('confirmationContent').style.display = 'none';
             document.getElementById('closeButton').style.display = 'block';
@@ -204,8 +233,9 @@
         
         function showError(error) {
             var messageDiv = document.getElementById('message');
-            messageDiv.textContent = 'Error: ' + error.message;
+            messageDiv.textContent = 'Error: ' + (error.message || error.toString());
             messageDiv.className = 'message-error';
+            
             document.getElementById('mainContent').style.display = 'none';
             document.getElementById('confirmationContent').style.display = 'none';
             document.getElementById('closeButton').style.display = 'block';
