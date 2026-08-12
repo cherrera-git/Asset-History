@@ -41,12 +41,12 @@
             border: 1px solid #ccc;
             box-sizing: border-box;
             font-size: 16px;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
         input[type="text"]:focus {
             outline: none;
             border-color: #4facfe;
-            box-shadow: 0 0 5px rgba(79, 172, 254, 0.3);
+            box-shadow: 0 0 5px rgba(79, 172, 254, 0.4);
         }
         
         /* Styling for Readonly inputs */
@@ -172,7 +172,8 @@
             <div>
                 <label for="assetId">Asset ID (Scan)</label>
                 <div class="input-row">
-                    <input type="text" id="assetId" name="assetId" placeholder="Scan Asset QR..." required style="flex-grow: 1;">
+                    <input type="text" id="assetId" name="assetId" placeholder="Scan Asset QR..." required style="flex-grow: 1;" list="assetIdList">
+                    <datalist id="assetIdList"></datalist>
                     <img src="https://lh3.googleusercontent.com/d/16lGNeu2KQRT66rYNb0AoSRsBCxIhwQbL" alt="Asset QR Location" title="Scan Asset ID QR here" class="qr-hint-img">
                 </div>
             </div>
@@ -197,26 +198,22 @@
         var isSubmitting = false;
 
         function openDialog(button, functionName) {
-            console.log("Navigating to dialog:", functionName);
             var buttons = document.querySelectorAll('.dialog-container button');
             buttons.forEach(function(btn) { btn.disabled = true; });
             if (button) { button.textContent = 'Loading...'; }
 
             google.script.run
                 .withSuccessHandler(function() {
-                    console.log("Navigation successful");
                     google.script.host.close();
                 })
                 .withFailureHandler(function(error) {
-                    console.error("Navigation failed:", error);
-                    alert('Could not open dialog: ' + error.message);
-                    window.location.reload(); 
+                    messageDiv('Could not open dialog: ' + error.message, true);
+                    buttons.forEach(function(btn) { btn.disabled = false; });
                 })
                 [functionName]();
         }
 
         function resetForm() {
-            console.log("Resetting form state");
             document.getElementById('actionButtons').style.display = 'none';
             document.getElementById('message').style.display = 'none';
             document.getElementById('borrowForm').style.display = 'flex';
@@ -227,83 +224,79 @@
             document.getElementById('itemNo').value = '';
             document.getElementById('projectCoordinator').value = '';
             
-            // Focus on Job Order immediately
+            // Focus on Job Order immediately for continuous scanning
             document.getElementById('jobOrder').focus();
             isSubmitting = false; 
         }
 
         document.addEventListener("DOMContentLoaded", function() {
-            // Start focus on Job Order
             document.getElementById('jobOrder').focus();
             
-            // NAVIGATION LOGIC
+            // Populate Asset ID Autocomplete options asynchronously
+            google.script.run
+                .withSuccessHandler(function(assetIds) {
+                    if (assetIds && assetIds.length > 0) {
+                        var datalist = document.getElementById('assetIdList');
+                        datalist.innerHTML = '';
+                        assetIds.forEach(function(id) {
+                            var option = document.createElement('option');
+                            option.value = id;
+                            datalist.appendChild(option);
+                        });
+                    }
+                })
+                .getAssetIds();
+            
+            // SCANNER & KEYBOARD LISTENERS
             document.getElementById('jobOrder').addEventListener('keydown', function(e) {
                 if(e.key === 'Enter') { 
                     e.preventDefault(); 
-                    console.log("Enter key detected on Job Order. Triggering lookup.");
                     fetchJobDetails(this.value);
                 }
             });
             
-            // Also trigger on blur if manual entry or scan finished
             document.getElementById('jobOrder').addEventListener('blur', function(e) {
                 if(this.value && !document.getElementById('itemNo').value) {
-                     console.log("Blur event on Job Order. Triggering lookup.");
                      fetchJobDetails(this.value);
                 }
             });
-
-            document.getElementById('assetId').addEventListener('keydown', function(e) {
-                // Last field - allow Enter to submit naturally if scanner sends Enter
-            });
         });
-        
+
         function fetchJobDetails(jobOrderVal) {
              if(!jobOrderVal) return;
              
-             console.log("Fetching details for Job Order:", jobOrderVal);
-             
-             // Visual cue
              document.getElementById('itemNo').placeholder = "Loading...";
              document.getElementById('projectCoordinator').placeholder = "Loading...";
 
              google.script.run
              .withSuccessHandler(function(result) {
-                 console.log("Job Details Response:", result);
-
                  if (result && result.found) {
                      document.getElementById('itemNo').value = result.itemNo;
                      document.getElementById('projectCoordinator').value = result.projectCoordinator;
-                     // Focus next field
                      document.getElementById('assetId').focus();
                  } else if (result && result.error) {
-                     console.warn("Job Fetch Error (Logical):", result.error);
-                     console.log("Error fetching job: " + result.error);
+                     document.getElementById('itemNo').value = "Error";
+                     document.getElementById('projectCoordinator').value = "Error";
                      document.getElementById('assetId').focus(); 
                  } else {
-                     console.warn("Job not found in database.");
                      document.getElementById('itemNo').value = "Not Found";
                      document.getElementById('projectCoordinator').value = "Not Found";
                      document.getElementById('assetId').focus();
                  }
              })
              .withFailureHandler(function(error) {
-                 console.error("Job Fetch Error (System):", error);
-                 alert("System Error fetching job details: " + error.message);
+                 document.getElementById('itemNo').value = "Error";
+                 document.getElementById('projectCoordinator').value = "Error";
              })
              .getJobDetails(jobOrderVal);
         }
 
-        // This handles the actual submission
+        // Handles submission to processBorrowForm
         document.getElementById('borrowForm').addEventListener('submit', function(event) {
-            event.preventDefault(); // Stop page reload
+            event.preventDefault();
             
-            if (isSubmitting) {
-                console.log("Submission blocked: Already in progress.");
-                return; 
-            }
+            if (isSubmitting) return; 
             isSubmitting = true; 
-            console.log("Submitting Borrow Form...");
             
             var messageDiv = document.getElementById('message');
             messageDiv.textContent = 'Processing...';
@@ -312,25 +305,20 @@
 
             google.script.run
             .withSuccessHandler(function(response) {
-                console.log("Submission Response:", response);
                 messageDiv.textContent = response;
                 if (response.startsWith('Success')) {
                     messageDiv.className = 'message-success';
-                } else {
-                    console.error("Submission Failed (Logical):", response);
-                    messageDiv.className = 'message-error';
-                    isSubmitting = false; // RESET SUBMIT LOCK ON LOGICAL ERROR
-                }
-                if (response.startsWith('Success')) {
                     document.getElementById('borrowForm').style.display = 'none';
                     document.getElementById('actionButtons').style.display = 'flex';
+                } else {
+                    messageDiv.className = 'message-error';
+                    isSubmitting = false; // Reset lock on logical error so user can re-submit
                 }
             })
             .withFailureHandler(function(error) {
-                console.error("Submission Failed (System):", error);
                 messageDiv.textContent = "System Error: " + error.message;
                 messageDiv.className = 'message-error';
-                isSubmitting = false; // Reset lock on critical failure
+                isSubmitting = false;
             })
             .processBorrowForm(this);
         });
