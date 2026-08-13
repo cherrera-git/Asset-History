@@ -4,18 +4,17 @@ const MASTER_SHEET_NAME = "ToExcel_MTL_AssetManagementTable";
 
 // *** CONFIGURATION FOR EXTERNAL JOB DB ***
 const EXTERNAL_JOB_DB_ID = '1vGPJvUOgGu7xEehsXu82QFM04qdo513pW8r3XFnzJRM'; 
-// Define multiple sheets to search through. Add or remove sheet names as necessary.
 const EXTERNAL_JOB_DB_SHEET_NAMES = ['OOR', 'New Orders', '2026 WK1 to WK52']; 
 
 /**
- * onOpen hook to build custom Google Sheets menu
+ * Custom Menu creation on spreadsheet open
  */
 function onOpen(e) {
   SpreadsheetApp.getUi()
       .createMenu('Asset Management')
       .addItem('Open Main Menu', 'showMainMenuDialog')
       .addSeparator()
-      .addItem('Import New Assets', 'showImportDialog')
+      .addItem('Import New Assets (Standard / Reels)', 'showImportDialog')
       .addToUi();
 }
 
@@ -50,33 +49,33 @@ function showImportDialog() {
 }
 
 /**
- * Helper function to map header column names to 0-based indices dynamically.
- * Fallbacks to default index if column name is not found.
+ * Resolves column index mappings based on header text in Row 1.
+ * Supports clean 10-column layout or legacy multi-column layout.
  */
-function getColumnIndices(sheet, defaultMap) {
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const map = {};
-  
-  // Normalize header names to uppercase stripped strings
-  headers.forEach((h, index) => {
-    if (h) {
-      const cleanHeader = h.toString().trim().toUpperCase();
-      map[cleanHeader] = index;
-    }
-  });
+function getColumnIndices(headerRow) {
+  const normalize = str => str ? str.toString().trim().toUpperCase() : "";
+  const normalizedHeaders = headerRow.map(normalize);
 
-  const resolvedIndices = {};
-  for (const [key, defaultIdx] of Object.entries(defaultMap)) {
-    let foundIdx = -1;
-    for (const [headerName, idx] of Object.entries(map)) {
-      if (headerName === key || headerName.includes(key) || key.includes(headerName)) {
-        foundIdx = idx;
-        break;
-      }
+  const find = (possibleNames) => {
+    for (const name of possibleNames) {
+      const idx = normalizedHeaders.indexOf(name);
+      if (idx !== -1) return idx;
     }
-    resolvedIndices[key] = foundIdx !== -1 ? foundIdx : defaultIdx;
-  }
-  return resolvedIndices;
+    return -1;
+  };
+
+  return {
+    partNum: find(["PART NUMBER", "PART NO", "ITEM", "PART"]),
+    desc: find(["DESCRIPTION", "DESC"]),
+    assetId: find(["ASSET", "ASSET ID", "TAG", "ASSET#"]),
+    extDesc: find(["EXT. DESCRIPTION", "EXTENDED DESCRIPTION", "DETAILS"]),
+    location: find(["LOCATION", "LOC", "BIN", "SHELF", "STOCKROOM LOCATION"]),
+    assignedTo: find(["ASSIGNED TO", "BORROWER", "CHECKED OUT TO", "PC"]),
+    status: find(["STATUS", "STATE"]),
+    category: find(["CATEGORY", "CLASS"]),
+    group: find(["GROUP", "TYPE"]),
+    mfg: find(["MANUFACTURER", "MFG", "BRAND", "PRODUCT CLASS"])
+  };
 }
 
 /**
@@ -84,82 +83,54 @@ function getColumnIndices(sheet, defaultMap) {
  */
 function getJobDetails(jobOrder) {
   if (!jobOrder) return null;
-  const cleanJobOrder = jobOrder.toString().trim().toUpperCase();
+  const cleanJob = jobOrder.toString().trim().toUpperCase();
 
-  // Check cache first to avoid slow external sheet opens
   const cache = CacheService.getScriptCache();
-  const cacheKey = 'job_' + cleanJobOrder;
-  const cachedData = cache.get(cacheKey);
-  if (cachedData) {
-    try {
-      return JSON.parse(cachedData);
-    } catch (e) {
-      // Continue to fetch if cache parse fails
-    }
-  }
+  const cached = cache.get(`job_${cleanJob}`);
+  if (cached) return JSON.parse(cached);
 
   try {
     const ss = SpreadsheetApp.openById(EXTERNAL_JOB_DB_ID);
     
-    // Iterate through designated external sheets
     for (const sheetName of EXTERNAL_JOB_DB_SHEET_NAMES) {
       const sheet = ss.getSheetByName(sheetName);
       if (!sheet) continue;
       
       const data = sheet.getDataRange().getValues();
-      if (data.length <= 1) continue;
-
-      // Find Job Order column dynamically (default index 7)
-      let jobColIdx = 7;
-      let itemNoColIdx = 14;
-      let pcColIdx = 19;
-
-      const headers = data[0];
-      headers.forEach((h, idx) => {
-        const str = h.toString().trim().toUpperCase();
-        if (str.includes("JOB ORDER") || str === "JOB") jobColIdx = idx;
-        if (str.includes("ITEM NO") || str.includes("ITEM")) itemNoColIdx = idx;
-        if (str.includes("PROJECT COORDINATOR") || str.includes("PC")) pcColIdx = idx;
-      });
+      if (data.length < 2) continue;
 
       for (let i = 1; i < data.length; i++) {
-        if (data[i][jobColIdx] && data[i][jobColIdx].toString().trim().toUpperCase() === cleanJobOrder) {
+        if (data[i][7] && data[i][7].toString().trim().toUpperCase() === cleanJob) {
           const result = {
             found: true,
-            itemNo: data[i][itemNoColIdx] || "N/A",
-            projectCoordinator: data[i][pcColIdx] || "N/A"
+            itemNo: data[i][14] ? data[i][14].toString().trim() : "",
+            projectCoordinator: data[i][19] ? data[i][19].toString().trim() : ""
           };
-          // Cache successful lookup for 30 minutes (1800 seconds)
-          cache.put(cacheKey, JSON.stringify(result), 1800);
+          cache.put(`job_${cleanJob}`, JSON.stringify(result), 300);
           return result;
         }
       }
     }
-    
     return { found: false };
-    
   } catch (e) {
     return { error: e.toString() };
   }
 }
 
 /**
- * Processes the form submission from BorrowDialog.html.
+ * Processes form submission from BorrowDialog.html
  */
 function processBorrowForm(formObject) {
   const lock = LockService.getScriptLock();
-  // Wait up to 10 seconds for concurrent locks to clear
   if (!lock.tryLock(10000)) {
-    return "Error: System is currently busy processing another request. Please try again.";
+    return "Error: System is currently busy with another operation. Please scan again.";
   }
 
   try {
-    const projectCoordinator = formObject.projectCoordinator || "N/A";
-    const pcName = projectCoordinator; 
-    
-    const assetId = (formObject.assetId || "").toString().trim().toUpperCase();
-    const jobOrder = formObject.jobOrder || "N/A";
-    const itemNo = formObject.itemNo || "N/A";
+    const projectCoordinator = (formObject.projectCoordinator || "N/A").trim();
+    const assetId = (formObject.assetId || "").trim().toUpperCase();
+    const jobOrder = (formObject.jobOrder || "N/A").trim();
+    const itemNo = (formObject.itemNo || "").trim();
     
     if (!assetId) return "Error: Asset ID is required.";
 
@@ -167,77 +138,49 @@ function processBorrowForm(formObject) {
     const borrowSheet = ss.getSheetByName(BORROW_SHEET_NAME);
     const masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
 
-    if (!masterSheet) return "Error: Master asset sheet '" + MASTER_SHEET_NAME + "' not found.";
-    if (!borrowSheet) return "Error: Borrow sheet '" + BORROW_SHEET_NAME + "' not found.";
+    if (!masterSheet) return `Error: Master sheet '${MASTER_SHEET_NAME}' not found.`;
+    if (!borrowSheet) return `Error: Borrow sheet '${BORROW_SHEET_NAME}' not found.`;
 
-    // Dynamic column resolution for Borrow sheet
-    const borrowCols = getColumnIndices(borrowSheet, {
-      "JOB ORDER": 0,
-      "ITEM NO": 1,
-      "PC": 2,
-      "ASSET ID": 3,
-      "DESCRIPTION": 4,
-      "BORROW DATE": 5,
-      "RETURN DATE": 6
-    });
+    const masterData = masterSheet.getDataRange().getValues();
+    if (masterData.length < 2) return "Error: Master sheet contains no asset data.";
 
+    const colIndices = getColumnIndices(masterData[0]);
+    if (colIndices.assetId === -1 || colIndices.status === -1) {
+      return "Error: Could not find 'Asset' or 'Status' column in Master Sheet.";
+    }
+
+    // Verify Asset status in Borrow Log
     const borrowData = borrowSheet.getDataRange().getValues();
     for (let i = 1; i < borrowData.length; i++) {
-      const row = borrowData[i];
-      const rowAssetId = (row[borrowCols["ASSET ID"]] || "").toString().trim().toUpperCase();
-      const returnDate = row[borrowCols["RETURN DATE"]];
-      
-      if (rowAssetId === assetId && (returnDate === "" || returnDate === null || returnDate === undefined)) { 
+      if (borrowData[i][3] && borrowData[i][3].toString().trim().toUpperCase() === assetId && borrowData[i][6] === "") { 
         return `Error: Asset ID '${assetId}' is already borrowed. Please return it first.`;
       }
     }
 
-    // Dynamic column resolution for Master sheet
-    const masterCols = getColumnIndices(masterSheet, {
-      "ASSET": 2,
-      "DESCRIPTION": 3,
-      "ASSIGNED TO": 5,
-      "STATUS": 9
-    });
-
-    const masterData = masterSheet.getDataRange().getValues();
-    let assetFound = false;
-    let assetDescription = "";
+    // Locate Asset in Master Sheet
     let masterRowIndex = -1;
+    let assetDescription = "";
 
     for (let i = 1; i < masterData.length; i++) {
-      const currentId = (masterData[i][masterCols["ASSET"]] || "").toString().trim().toUpperCase();
-      if (currentId === assetId) {
-        assetFound = true;
-        assetDescription = masterData[i][masterCols["DESCRIPTION"]] || "";
-        masterRowIndex = i + 1; // 1-based sheet row index
+      if (masterData[i][colIndices.assetId] && masterData[i][colIndices.assetId].toString().trim().toUpperCase() === assetId) {
+        masterRowIndex = i + 1;
+        assetDescription = colIndices.desc !== -1 ? masterData[i][colIndices.desc] : "";
         break;
       }
     }
 
-    if (!assetFound) return `Error: Asset ID '${assetId}' not found in master inventory.`;
+    if (masterRowIndex === -1) return `Error: Asset ID '${assetId}' not found in the master list.`;
 
-    // Update Master Sheet (1-based column indices)
-    masterSheet.getRange(masterRowIndex, masterCols["ASSIGNED TO"] + 1).setValue(pcName); 
-    masterSheet.getRange(masterRowIndex, masterCols["STATUS"] + 1).setValue('Checked Out');
-
-    // Add entry to Borrow Sheet in a single batched array operation
-    borrowSheet.insertRowAfter(1);
-    const newBorrowRow = [];
-    newBorrowRow[borrowCols["JOB ORDER"]] = jobOrder;
-    newBorrowRow[borrowCols["ITEM NO"]] = itemNo;
-    newBorrowRow[borrowCols["PC"]] = projectCoordinator;
-    newBorrowRow[borrowCols["ASSET ID"]] = assetId;
-    newBorrowRow[borrowCols["DESCRIPTION"]] = assetDescription;
-    newBorrowRow[borrowCols["BORROW DATE"]] = new Date();
-    newBorrowRow[borrowCols["RETURN DATE"]] = "";
-
-    // Fill array gaps if any
-    for (let c = 0; c < Math.max(...Object.values(borrowCols)) + 1; c++) {
-      if (newBorrowRow[c] === undefined) newBorrowRow[c] = "";
+    // Update Master Sheet
+    if (colIndices.assignedTo !== -1) {
+      masterSheet.getRange(masterRowIndex, colIndices.assignedTo + 1).setValue(projectCoordinator);
     }
+    masterSheet.getRange(masterRowIndex, colIndices.status + 1).setValue('Checked Out');
 
-    borrowSheet.getRange(2, 1, 1, newBorrowRow.length).setValues([newBorrowRow]);
+    // Add entry to Borrow Sheet in a single batched array write
+    borrowSheet.insertRowAfter(1);
+    const newBorrowRow = [[jobOrder, itemNo, projectCoordinator, assetId, assetDescription, new Date(), ""]];
+    borrowSheet.getRange(2, 1, 1, 7).setValues(newBorrowRow);
 
     return `Success: Asset '${assetId}' borrowed for Job '${jobOrder}'.`;
 
@@ -249,18 +192,18 @@ function processBorrowForm(formObject) {
 }
 
 /**
- * Processes the form submission from ReturnDialog.html.
+ * Processes form submission from ReturnDialog.html
  */
 function processReturnForm(formObject) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
-    return "Error: System is currently busy processing another request. Please try again.";
+    return "Error: System busy. Please scan again.";
   }
 
   try {
-    const assetId = (formObject.assetId || "").toString().trim().toUpperCase();
+    const assetId = (formObject.assetId || "").trim().toUpperCase();
     if (!assetId) return "Error: Asset ID is required.";
-    
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const borrowSheet = ss.getSheetByName(BORROW_SHEET_NAME);
     const masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
@@ -268,50 +211,35 @@ function processReturnForm(formObject) {
     if (!masterSheet) return "Error: Master sheet not found.";
     if (!borrowSheet) return "Error: Borrow sheet not found.";
     
-    const borrowCols = getColumnIndices(borrowSheet, {
-      "ASSET ID": 3,
-      "RETURN DATE": 6
-    });
-
     const borrowData = borrowSheet.getDataRange().getValues();
     let borrowRowIndex = -1;
 
-    // Find latest open borrow record
     for (let i = 1; i < borrowData.length; i++) {
-      const rowAssetId = (borrowData[i][borrowCols["ASSET ID"]] || "").toString().trim().toUpperCase();
-      const returnDate = borrowData[i][borrowCols["RETURN DATE"]];
-      
-      if (rowAssetId === assetId && (returnDate === '' || returnDate === null || returnDate === undefined)) {
+      if (borrowData[i][3] && borrowData[i][3].toString().trim().toUpperCase() === assetId && borrowData[i][6] === '') {
         borrowRowIndex = i + 1;
         break; 
       }
     }
 
-    if (borrowRowIndex === -1) return `Error: Asset ID '${assetId}' is not currently marked as borrowed.`;
+    if (borrowRowIndex === -1) return `Error: Asset ID '${assetId}' is not currently borrowed.`;
 
-    // Update Borrow sheet return date
-    borrowSheet.getRange(borrowRowIndex, borrowCols["RETURN DATE"] + 1).setValue(new Date()); 
+    // Record Return Timestamp
+    borrowSheet.getRange(borrowRowIndex, 7).setValue(new Date()); 
 
-    // Update Master sheet status
-    const masterCols = getColumnIndices(masterSheet, {
-      "ASSET": 2,
-      "ASSIGNED TO": 5,
-      "STATUS": 9
-    });
-
+    // Reset Master Sheet
     const masterData = masterSheet.getDataRange().getValues();
-    let masterRowIndex = -1;
+    const colIndices = getColumnIndices(masterData[0]);
+
     for (let i = 1; i < masterData.length; i++) {
-      const currentId = (masterData[i][masterCols["ASSET"]] || "").toString().trim().toUpperCase();
-      if (currentId === assetId) {
-        masterRowIndex = i + 1;
+      if (masterData[i][colIndices.assetId] && masterData[i][colIndices.assetId].toString().trim().toUpperCase() === assetId) {
+        if (colIndices.assignedTo !== -1) {
+          masterSheet.getRange(i + 1, colIndices.assignedTo + 1).setValue(''); 
+        }
+        if (colIndices.status !== -1) {
+          masterSheet.getRange(i + 1, colIndices.status + 1).setValue('Available'); 
+        }
         break;
       }
-    }
-
-    if (masterRowIndex !== -1) {
-      masterSheet.getRange(masterRowIndex, masterCols["ASSIGNED TO"] + 1).setValue(''); 
-      masterSheet.getRange(masterRowIndex, masterCols["STATUS"] + 1).setValue('Available'); 
     }
     
     return `Success: Asset '${assetId}' has been returned.`;
@@ -324,63 +252,111 @@ function processReturnForm(formObject) {
 }
 
 /**
- * Imports new assets from standard CSV or TSV data.
- * Auto-detects delimiters and clears autocomplete cache.
+ * Unified smart importer. Auto-detects file format (Standard Asset CSV vs SyteLine Stockroom Locations CSV).
+ * Dynamically builds rows matching whatever columns exist in the Master Sheet.
  */
 function importNewAssets(csvText) {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(15000)) {
-    return "Error: Import system busy. Please try again in a few seconds.";
-  }
+  if (!lock.tryLock(15000)) return "Error: Import operation busy. Try again.";
 
   try {
-    const masterSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(MASTER_SHEET_NAME);
-    if (!masterSheet) return "Error: Master sheet not found.";
+    if (!csvText || !csvText.trim()) return "Error: Empty file uploaded.";
 
-    const masterCols = getColumnIndices(masterSheet, {
-      "ASSET": 2,
-      "ASSIGNED TO": 5,
-      "STATUS": 9
-    });
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
+    if (!masterSheet) return `Error: Master sheet '${MASTER_SHEET_NAME}' not found.`;
 
-    const existingAssetIds = new Set(
-      masterSheet.getRange(2, masterCols["ASSET"] + 1, Math.max(1, masterSheet.getLastRow() - 1), 1)
-        .getValues()
-        .flat()
-        .map(id => id ? id.toString().trim().toUpperCase() : "")
-        .filter(Boolean)
-    );
+    const masterHeaders = masterSheet.getRange(1, 1, 1, masterSheet.getLastColumn()).getValues()[0];
+    const colIndices = getColumnIndices(masterHeaders);
 
-    // Auto-detect CSV vs TSV delimiter
+    if (colIndices.assetId === -1) {
+      return "Error: Master sheet must have an 'Asset' or 'Asset ID' column header in Row 1.";
+    }
+
+    const masterData = masterSheet.getDataRange().getValues();
+    const existingAssetIds = new Set();
+    
+    for (let i = 1; i < masterData.length; i++) {
+      if (masterData[i][colIndices.assetId]) {
+        existingAssetIds.add(masterData[i][colIndices.assetId].toString().trim().toUpperCase());
+      }
+    }
+
+    // Auto-detect delimiter (Tab vs Comma)
     const delimiter = csvText.includes('\t') ? '\t' : ',';
     const csvData = Utilities.parseCsv(csvText, delimiter);
+    if (csvData.length < 2) return "Error: Uploaded file contains no data rows.";
+
+    const fileHeaders = csvData[0];
+    
+    // Strict Header Search Helper
+    const findExactHeader = (names) => {
+      const normalized = fileHeaders.map(h => h ? h.toString().trim().toUpperCase() : "");
+      for (const name of names) {
+        const idx = normalized.indexOf(name);
+        if (idx !== -1) return idx;
+      }
+      return -1;
+    };
+
+    const fileItemIdx = findExactHeader(["ITEM", "PART NUMBER", "PART NO", "PART"]);
+    const fileAssetIdx = findExactHeader(["ASSET", "ASSET ID", "TAG", "ASSET#"]);
+    const fileDescIdx = findExactHeader(["DESCRIPTION", "DESC"]);
+    const fileExtDescIdx = findExactHeader(["EXT. DESCRIPTION", "EXTENDED DESCRIPTION", "LOCATION DESCRIPTION"]);
+    const fileLocIdx = findExactHeader(["LOCATION", "STOCKROOM LOCATION", "LOC", "BIN", "SHELF"]);
+    const fileMfgIdx = findExactHeader(["PRODUCT CLASS", "MANUFACTURER", "MFG", "BRAND", "CLASS"]);
+
+    const isStockroomFile = (fileItemIdx !== -1 && fileAssetIdx === -1);
     let newAssetsAdded = 0;
     const rowsToAdd = [];
 
     for (let i = 1; i < csvData.length; i++) {
       const row = csvData[i];
       if (!row || row.length === 0) continue;
-      
-      const csvAssetId = (row[masterCols["ASSET"]] || "").toString().trim().toUpperCase();
-      if (!csvAssetId) continue;
 
-      if (!existingAssetIds.has(csvAssetId)) {
-        row[masterCols["STATUS"]] = "Available"; 
-        row[masterCols["ASSIGNED TO"]] = "";
-        rowsToAdd.push(row);
+      let partNum = (fileItemIdx !== -1 && row[fileItemIdx]) ? row[fileItemIdx].toString().trim().replace(/\s+/g, ' ') : "";
+      let assetId = (fileAssetIdx !== -1 && row[fileAssetIdx]) ? row[fileAssetIdx].toString().trim().toUpperCase() : "";
+      let desc = (fileDescIdx !== -1 && row[fileDescIdx]) ? row[fileDescIdx].toString().trim().replace(/\s+/g, ' ') : "";
+      let extDesc = (fileExtDescIdx !== -1 && row[fileExtDescIdx]) ? row[fileExtDescIdx].toString().trim().replace(/\s+/g, ' ') : "";
+      let loc = (fileLocIdx !== -1 && row[fileLocIdx]) ? row[fileLocIdx].toString().trim().replace(/\s+/g, ' ') : "";
+      let mfg = (fileMfgIdx !== -1 && row[fileMfgIdx]) ? row[fileMfgIdx].toString().trim().replace(/\s+/g, ' ') : "";
+
+      if (isStockroomFile) {
+        if (!partNum) continue;
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+        assetId = `SPL-${partNum}-${randomSuffix}`.toUpperCase();
+        if (!loc) loc = "Mezzanine";
+      }
+
+      if (!assetId) continue;
+
+      if (!existingAssetIds.has(assetId)) {
+        // Construct clean row matching Master Sheet's exact column length
+        const newRow = new Array(masterHeaders.length).fill("");
+
+        if (colIndices.partNum !== -1) newRow[colIndices.partNum] = partNum;
+        if (colIndices.desc !== -1) newRow[colIndices.desc] = desc;
+        if (colIndices.assetId !== -1) newRow[colIndices.assetId] = assetId;
+        if (colIndices.extDesc !== -1) newRow[colIndices.extDesc] = extDesc;
+        if (colIndices.location !== -1) newRow[colIndices.location] = loc;
+        if (colIndices.assignedTo !== -1) newRow[colIndices.assignedTo] = "";
+        if (colIndices.status !== -1) newRow[colIndices.status] = "Available";
+        if (colIndices.category !== -1) newRow[colIndices.category] = isStockroomFile ? "RAW MATERIAL" : "EQUIPMENT";
+        if (colIndices.group !== -1) newRow[colIndices.group] = isStockroomFile ? "REELS & SPOOLS" : "TOOLS";
+        if (colIndices.mfg !== -1) newRow[colIndices.mfg] = mfg;
+
+        rowsToAdd.push(newRow);
         newAssetsAdded++;
-        existingAssetIds.add(csvAssetId);
+        existingAssetIds.add(assetId);
       }
     }
 
     if (rowsToAdd.length > 0) {
-      masterSheet.getRange(masterSheet.getLastRow() + 1, 1, rowsToAdd.length, rowsToAdd[0].length).setValues(rowsToAdd);
-      
-      // Invalidate asset ID cache so autocomplete updates immediately
+      masterSheet.getRange(masterSheet.getLastRow() + 1, 1, rowsToAdd.length, masterHeaders.length).setValues(rowsToAdd);
       CacheService.getScriptCache().remove('asset_ids');
     }
 
-    return `Import complete: ${newAssetsAdded} new assets were added.`;
+    return `Import complete: ${newAssetsAdded} new records added to Master List.`;
 
   } catch (e) {
     return "Error: " + e.toString();
@@ -390,74 +366,50 @@ function importNewAssets(csvText) {
 }
 
 /**
- * Find Logic - Pure read-only lookup of asset status and borrower details.
+ * Searches Master Sheet & Borrow Log for asset details (Strictly Read-Only)
  */
 function findAsset(formObject) {
   try {
     const assetId = (formObject.assetId || "").toString().trim().toUpperCase();
-    if (!assetId) return "Error: Asset ID is required.";
+    if (!assetId) return "Error: Please enter or scan an Asset ID.";
 
-    const masterSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(MASTER_SHEET_NAME);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
     if (!masterSheet) return "Error: Master sheet not found.";
 
-    const masterCols = getColumnIndices(masterSheet, {
-      "ASSET": 2,
-      "DESCRIPTION": 3,
-      "ASSIGNED TO": 5,
-      "STATUS": 9
-    });
+    const masterData = masterSheet.getDataRange().getValues();
+    if (masterData.length < 2) return `Error: Asset ID '${assetId}' not found.`;
 
-    const data = masterSheet.getDataRange().getValues();
-    for (let i = 1; i < data.length; i++) {
-      const currentId = (data[i][masterCols["ASSET"]] || "").toString().trim().toUpperCase();
-      
-      if (currentId === assetId) {
-        let currentStatus = data[i][masterCols["STATUS"]] || "Available";
-        let assignedTo = data[i][masterCols["ASSIGNED TO"]] || "";
-        const description = data[i][masterCols["DESCRIPTION"]] || "N/A";
+    const colIndices = getColumnIndices(masterData[0]);
+
+    for (let i = 1; i < masterData.length; i++) {
+      if (masterData[i][colIndices.assetId] && masterData[i][colIndices.assetId].toString().trim().toUpperCase() === assetId) {
+        let currentStatus = colIndices.status !== -1 ? masterData[i][colIndices.status] : "Unknown";
+        let assignedTo = colIndices.assignedTo !== -1 ? masterData[i][colIndices.assignedTo] : "";
+        const description = colIndices.desc !== -1 ? masterData[i][colIndices.desc] : "";
+        const location = colIndices.location !== -1 ? masterData[i][colIndices.location] : "";
         
-        let realStatus = currentStatus;
         let jobOrder = "";
         let itemNo = "";
         let borrowDateStr = "";
         
-        const borrowSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(BORROW_SHEET_NAME);
+        const borrowSheet = ss.getSheetByName(BORROW_SHEET_NAME);
         if (borrowSheet) {
-          const borrowCols = getColumnIndices(borrowSheet, {
-            "JOB ORDER": 0,
-            "ITEM NO": 1,
-            "PC": 2,
-            "ASSET ID": 3,
-            "BORROW DATE": 5,
-            "RETURN DATE": 6
-          });
-
           const borrowData = borrowSheet.getDataRange().getValues();
           for (let j = 1; j < borrowData.length; j++) {
-            const borrowRow = borrowData[j];
-            const borrowAssetId = (borrowRow[borrowCols["ASSET ID"]] || "").toString().trim().toUpperCase();
-            
-            if (borrowAssetId === assetId) {
-              if (borrowRow[borrowCols["BORROW DATE"]]) {
-                borrowDateStr = new Date(borrowRow[borrowCols["BORROW DATE"]]).toLocaleDateString();
-              }
-
-              const returnDate = borrowRow[borrowCols["RETURN DATE"]];
-              if (returnDate === "" || returnDate === null || returnDate === undefined) {
-                realStatus = "Checked Out";
-                jobOrder = borrowRow[borrowCols["JOB ORDER"]] ? borrowRow[borrowCols["JOB ORDER"]] : "N/A"; 
-                itemNo = borrowRow[borrowCols["ITEM NO"]] ? borrowRow[borrowCols["ITEM NO"]] : "N/A";
-                assignedTo = borrowRow[borrowCols["PC"]] ? borrowRow[borrowCols["PC"]] : assignedTo; 
-              } else {
-                realStatus = "Available";
-              }
+            if (borrowData[j][3] && borrowData[j][3].toString().trim().toUpperCase() === assetId && borrowData[j][6] === "") {
+              currentStatus = "Checked Out";
+              jobOrder = borrowData[j][0] || "N/A"; 
+              itemNo = borrowData[j][1] || "N/A";
+              assignedTo = borrowData[j][2] || assignedTo || "N/A"; 
+              if (borrowData[j][5]) borrowDateStr = new Date(borrowData[j][5]).toLocaleDateString();
               break;
             }
           }
         }
         
-        let message = `Asset ID: ${assetId}\nDescription: ${description}\nStatus: ${realStatus}`;
-        if (realStatus === 'Checked Out') {
+        let message = `Asset ID: ${assetId}\nDescription: ${description}\nLocation: ${location || 'N/A'}\nStatus: ${currentStatus}`;
+        if (currentStatus === 'Checked Out') {
            if (jobOrder) message += `\nJob Order: ${jobOrder}`;
            if (itemNo) message += `\nItem No.: ${itemNo}`;
            if (assignedTo) message += `\nProject Coordinator: ${assignedTo}`;
@@ -473,38 +425,31 @@ function findAsset(formObject) {
 }
 
 /**
- * Get Asset IDs for autocomplete with robust caching
+ * Returns array of Asset IDs for UI autocomplete
  */
 function getAssetIds() {
   const cache = CacheService.getScriptCache();
   const cached = cache.get('asset_ids');
-  if (cached != null) {
-    try {
-      return JSON.parse(cached);
-    } catch (e) {}
-  }
+  if (cached) return JSON.parse(cached);
 
   try {
     const masterSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(MASTER_SHEET_NAME);
     if (!masterSheet) return [];
 
-    const masterCols = getColumnIndices(masterSheet, { "ASSET": 2 });
-    const colIndex = masterCols["ASSET"] + 1; // 1-based column
+    const masterData = masterSheet.getDataRange().getValues();
+    if (masterData.length < 2) return [];
 
-    const lastRow = masterSheet.getLastRow();
-    if (lastRow < 2) return [];
+    const colIndices = getColumnIndices(masterData[0]);
+    if (colIndices.assetId === -1) return [];
 
-    const data = masterSheet.getRange(2, colIndex, lastRow - 1, 1)
-      .getValues()
-      .flat()
-      .map(id => id ? id.toString().trim() : "")
-      .filter(Boolean);
+    const assetIds = [];
+    for (let i = 1; i < masterData.length; i++) {
+      const val = masterData[i][colIndices.assetId];
+      if (val) assetIds.push(val.toString().trim());
+    }
 
-    // Deduplicate
-    const uniqueData = Array.from(new Set(data));
-
-    cache.put('asset_ids', JSON.stringify(uniqueData), 600); // 10 minutes cache
-    return uniqueData;
+    cache.put('asset_ids', JSON.stringify(assetIds), 600);
+    return assetIds;
   } catch (e) {
     return [];
   }
