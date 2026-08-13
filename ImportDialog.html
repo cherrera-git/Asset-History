@@ -4,6 +4,7 @@
     <base target="_top">
     <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
     <style>
+        /* Modern UI Reset & Body Styling */
         body, html {
             margin: 0;
             padding: 20px;
@@ -16,6 +17,7 @@
             text-align: center;
             box-sizing: border-box;
         }
+
         .container {
             display: flex;
             flex-direction: column;
@@ -23,22 +25,29 @@
             width: 100%;
             max-width: 550px;
         }
+
         h3 {
             margin-top: 0;
             color: #1a252f;
+            font-weight: 600;
         }
+
         p {
             font-size: 15px;
             line-height: 1.5;
             color: #4a5568;
             margin: 0;
         }
+
+        /* Container for buttons */
         .button-group {
             display: flex;
             width: 100%;
             gap: 10px;
             margin-top: 10px;
         }
+
+        /* Base Button Style */
         button {
             display: flex;
             align-items: center;
@@ -56,26 +65,33 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             background-image: linear-gradient(to top, #fdfbfb 0%, #ebedee 100%);
         }
+
         button:disabled {
             opacity: 0.65;
             cursor: not-allowed;
             transform: none !important;
         }
+
+        /* Unique Button Colors & Hovers */
         .submit-btn {
             background-image: linear-gradient(to right, #43e97b 0%, #38f9d7 100%);
             color: white;
             font-weight: 600;
         }
+
         .submit-btn:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
+
         .secondary-btn:hover:not(:disabled) {
             background-image: linear-gradient(to top, #d3d3d3 0%, #8a8a8a 100%);
             color: white;
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
+
+        /* Message Styling */
         #message {
             padding: 16px;
             border-radius: 8px;
@@ -86,16 +102,20 @@
             font-size: 1em;
             margin-top: 10px;
         }
+
         .message-success {
             background-color: #d4edda;
             color: #155724;
             border: 1px solid #c3e6cb;
         }
+
         .message-error {
             background-color: #f8d7da;
             color: #58151c;
             border: 1px solid #f5c6cb;
         }
+
+        /* File Upload Input Wrapper */
         .file-input-wrapper {
             background: white;
             padding: 12px;
@@ -103,9 +123,11 @@
             border: 1px dashed #cbd5e0;
             transition: border-color 0.2s;
         }
+
         .file-input-wrapper:hover {
             border-color: #4facfe;
         }
+
         input[type="file"] {
             width: 100%;
             font-size: 14px;
@@ -115,12 +137,13 @@
     </style>
 </head>
 <body>
+    <!-- MAIN IMPORT FORM -->
     <div class="container" id="mainContent">
         <h3>Import New Assets</h3>
         <p>
-            Select your <strong>CSV</strong> or <strong>TSV</strong> file exported from your asset management system. The script will compare entries and add only new asset records.
+            Select your <strong>CSV</strong> or <strong>TSV</strong> file exported from your asset management system or SyteLine Stockroom report.
             <br><br>
-            <em>Existing assets will remain unchanged.</em>
+            The script will compare entries against your master list and add only new unique records. <em>Existing assets remain untouched.</em>
         </p>
         
         <div class="file-input-wrapper">
@@ -133,6 +156,7 @@
         </div>
     </div>
     
+    <!-- CONFIRMATION STEP -->
     <div class="container" id="confirmationContent" style="display: none;">
         <h3>Confirm Import</h3>
         <p>
@@ -140,7 +164,7 @@
             <br>
             <strong id="fileNameDisplay" style="color: #084298; word-break: break-all;"></strong>
             <br><br>
-            New unique rows will be added to the Master Asset table.
+            New records will be appended to the Master Asset table.
         </p>
         <div class="button-group">
             <button id="confirmImportButton" class="submit-btn" onclick="proceedWithImport()">Yes, Proceed</button>
@@ -148,8 +172,10 @@
         </div>
     </div>
     
+    <!-- INLINE MESSAGE BOX -->
     <div id="message" style="display: none; width: 100%; max-width: 550px;"></div>
     
+    <!-- CLOSE BUTTON AFTER COMPLETION -->
     <div id="closeButton" style="display: none; width: 100%; max-width: 550px; margin-top: 15px;">
         <button class="secondary-btn" style="width: 100%;" onclick="google.script.host.close()">Close Dialog</button>
     </div>
@@ -215,7 +241,7 @@
 
             reader.readAsText(fileToImport);
         }
-        
+
         function showResult(response) {
             var messageDiv = document.getElementById('message');
             messageDiv.textContent = response;
