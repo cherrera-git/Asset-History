@@ -9,7 +9,7 @@
             margin: 0;
             padding: 0;
             font-family: 'Roboto', sans-serif;
-            background-color: #eef2f3; /* New calming background color */
+            background-color: #eef2f3;
             height: 100%;
             display: flex;
             align-items: center;
@@ -21,7 +21,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 15px; /* Spacing between elements */
+            gap: 15px;
             width: 90%;
             max-width: 600px;
         }
@@ -32,6 +32,8 @@
             color: #333;
             width: 100%;
             text-align: left;
+            margin-bottom: 5px;
+            display: block;
         }
 
         /* Styling for text inputs */
@@ -42,18 +44,20 @@
             border: 1px solid #ccc;
             box-sizing: border-box;
             font-size: 16px;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s, box-shadow 0.2s;
         }
         input[type="text"]:focus {
             outline: none;
-            border-color: #4facfe;
+            border-color: #f79d57;
+            box-shadow: 0 0 5px rgba(247, 157, 87, 0.4);
         }
 
-        /* Container for buttons to sit side-by-side */
+        /* Container for buttons */
         .button-group {
             display: flex;
             width: 100%;
             gap: 10px;
+            margin-top: 10px;
         }
 
         /* Base Button Style */
@@ -79,40 +83,50 @@
             opacity: 0.7;
             cursor: not-allowed;
         }
-        
-        /* Message Styling - Higher contrast for readability */
+
+        /* Message Styling - Card Output Format */
         #message {
             padding: 18px;
             border-radius: 8px;
             width: 100%;
             box-sizing: border-box;
-            text-align: center;
-            font-weight: 500;
+            text-align: left;
+            font-weight: 400;
             font-size: 1.05em;
-            background-color: #d1e7fd;
-            color: #084298;
-            border: 1px solid #b6d4fe;
+            line-height: 1.6;
+            background-color: #ffffff;
+            color: #2c3e50;
+            border: 1px solid #cbd5e1;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            white-space: pre-wrap;
         }
         .message-error {
-            background-color: #f8d7da;
-            color: #58151c;
-            border: 1px solid #f5c6cb;
+            background-color: #f8d7da !important;
+            color: #58151c !important;
+            border: 1px solid #f5c6cb !important;
+            text-align: center !important;
         }
 
         /* Unique Button Colors & Hovers */
         .submit-btn {
             background-image: linear-gradient(to right, #f8c76b 0%, #f79d57 100%);
             color: white;
+            font-weight: 600;
         }
-        .submit-btn:hover {
+        .submit-btn:hover:not(:disabled) {
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
-        .secondary-btn:hover {
+        .secondary-btn:hover:not(:disabled) {
             background-image: linear-gradient(to top, #d3d3d3 0%, #8a8a8a 100%);
             color: white;
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        /* Highlight scanning field */
+        #assetId {
+            border-left: 4px solid #f79d57;
         }
 
         /* QR Hint Image Styling */
@@ -136,16 +150,18 @@
 </head>
 <body>
     <div class="dialog-container">
-        <form id="findForm" style="width: 100%; display: flex; flex-direction: column; gap: 15px;">
+        <form id="findForm" style="width: 100%; display: flex; flex-direction: column; gap: 10px;">
             <div>
-                <label for="assetId">Asset ID</label>
+                <label for="assetId">Asset ID (Scan / Auto-complete)</label>
                 <div class="input-row">
-                    <input type="text" id="assetId" name="assetId" required style="flex-grow: 1;">
+                    <input type="text" id="assetId" name="assetId" placeholder="Scan Asset QR..." required style="flex-grow: 1;" list="assetIdList" autocomplete="off">
+                    <datalist id="assetIdList"></datalist>
                     <img src="https://lh3.googleusercontent.com/d/16lGNeu2KQRT66rYNb0AoSRsBCxIhwQbL" alt="Asset QR Location" title="Scan Asset ID QR here" class="qr-hint-img">
                 </div>
             </div>
+            
             <div class="button-group">
-                <button type="submit" class="submit-btn">Find Asset</button>
+                <button type="submit" id="submitBtn" class="submit-btn">Find Asset</button>
                 <button type="button" class="secondary-btn" onclick="openDialog(this, 'showMainMenuDialog')">Back to Menu</button>
             </div>
         </form>
@@ -161,8 +177,17 @@
     </div>
 
     <script>
-        var isSubmitting = false; // Flag to prevent multiple submissions
+        var isSubmitting = false;
 
+        /* Inline error/status message renderer */
+        function displayMessage(text, isError) {
+            var messageDiv = document.getElementById('message');
+            messageDiv.textContent = text;
+            messageDiv.className = isError ? 'message-error' : '';
+            messageDiv.style.display = 'block';
+        }
+
+        /* Navigates between Apps Script dialog windows without alert() modals */
         function openDialog(button, functionName) {
             var buttons = document.querySelectorAll('.dialog-container button');
             buttons.forEach(function(btn) { btn.disabled = true; });
@@ -173,8 +198,8 @@
                     google.script.host.close();
                 })
                 .withFailureHandler(function(error) {
-                    alert('Could not open dialog: ' + error.message);
-                    window.location.reload(); // Reload dialog on failure to reset state
+                    displayMessage('Could not navigate: ' + (error.message || error.toString()), true);
+                    buttons.forEach(function(btn) { btn.disabled = false; });
                 })
                 [functionName]();
         }
@@ -185,18 +210,32 @@
             document.getElementById('findForm').style.display = 'flex';
             document.getElementById('assetId').value = '';
             document.getElementById('assetId').focus();
-            isSubmitting = false; // Reset submission flag
+            isSubmitting = false;
         }
 
         document.addEventListener("DOMContentLoaded", function() {
             document.getElementById('assetId').focus();
             
-            // Listen for 'Enter' key on assetId field
-            document.getElementById('assetId').addEventListener('keydown', function(event) {
-                if (event.key === 'Enter') {
-                    event.preventDefault(); // Stop default 'Enter' behavior
-                    // Check if field has a value before submitting
-                    if (document.getElementById('assetId').value) {
+            // Asynchronously populate Asset ID autocomplete list
+            google.script.run
+                .withSuccessHandler(function(assetIds) {
+                    if (assetIds && assetIds.length > 0) {
+                        var datalist = document.getElementById('assetIdList');
+                        datalist.innerHTML = '';
+                        assetIds.forEach(function(id) {
+                            var option = document.createElement('option');
+                            option.value = id;
+                            datalist.appendChild(option);
+                        });
+                    }
+                })
+                .getAssetIds();
+            
+            // Handle barcode scanner Enter keystroke
+            document.getElementById('assetId').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (this.value) {
                         document.getElementById('findForm').dispatchEvent(new Event('submit', { cancelable: true }));
                     }
                 }
@@ -205,26 +244,32 @@
 
         document.getElementById('findForm').addEventListener('submit', function(event) {
             event.preventDefault();
-            if (isSubmitting) {
-                return; // Don't submit if already submitting
-            }
-            isSubmitting = true; // Set flag
+            
+            if (isSubmitting) return;
+            isSubmitting = true;
             
             var messageDiv = document.getElementById('message');
-            messageDiv.textContent = 'Searching...';
+            messageDiv.textContent = 'Searching database...';
             messageDiv.className = '';
             messageDiv.style.display = 'block';
 
-            google.script.run.withSuccessHandler(function(response) {
-                messageDiv.innerHTML = response.replace(/\n/g, '<br>');
-                if (response.startsWith('Error')) {
-                    messageDiv.className = 'message-error';
-                } else {
-                    messageDiv.className = '';
-                }
-                document.getElementById('findForm').style.display = 'none';
-                document.getElementById('actionButtons').style.display = 'flex';
-            }).findAsset(this);
+            google.script.run
+                .withSuccessHandler(function(response) {
+                    if (response && !response.startsWith('Error')) {
+                        messageDiv.textContent = response;
+                        messageDiv.className = '';
+                        document.getElementById('findForm').style.display = 'none';
+                        document.getElementById('actionButtons').style.display = 'flex';
+                    } else {
+                        displayMessage(response || "Asset not found.", true);
+                        isSubmitting = false;
+                    }
+                })
+                .withFailureHandler(function(error) {
+                    displayMessage("System Error: " + (error.message || error.toString()), true);
+                    isSubmitting = false;
+                })
+                .findAsset(this);
         });
     </script>
 </body>
