@@ -4,64 +4,69 @@ const MASTER_SHEET_NAME = "ToExcel_MTL_AssetManagementTable";
 
 // *** CONFIGURATION FOR EXTERNAL JOB DB ***
 const EXTERNAL_JOB_DB_ID = '1vGPJvUOgGu7xEehsXu82QFM04qdo513pW8r3XFnzJRM'; 
-      const isStockroomFile = (fileItemIdx !== -1 && fileAssetIdx === -1);
-      let newAssetsAdded = 0;
-      const rowsToAdd = [];
+const EXTERNAL_JOB_DB_SHEET_NAMES = ['OOR', 'New Orders', '2026 WK1 to WK52']; 
 
-      for (let i = 1; i < csvData.length; i++) {
-        const row = csvData[i];
-        if (!row || row.length === 0) continue;
+/**
+ * Creates custom spreadsheet menu on document open
+ */
+function onOpen(e) {
+  SpreadsheetApp.getUi()
+      .createMenu('Asset Management')
+      .addItem('Open Main Menu', 'showMainMenuDialog')
+      .addSeparator()
+      .addItem('Import New Assets', 'showImportDialog')
+      .addToUi();
+}
 
-        let partNum = (fileItemIdx !== -1 && row[fileItemIdx]) ? row[fileItemIdx].toString().trim().replace(/\s+/g, ' ') : "";
-        let assetId = (fileAssetIdx !== -1 && row[fileAssetIdx]) ? row[fileAssetIdx].toString().trim().toUpperCase() : "";
-        let desc = (fileDescIdx !== -1 && row[fileDescIdx]) ? row[fileDescIdx].toString().trim().replace(/\s+/g, ' ') : "";
-        let extDesc = (fileExtDescIdx !== -1 && row[fileExtDescIdx]) ? row[fileExtDescIdx].toString().trim().replace(/\s+/g, ' ') : "";
-        let loc = (fileLocIdx !== -1 && row[fileLocIdx]) ? row[fileLocIdx].toString().trim().replace(/\s+/g, ' ') : "";
-        let mfg = (fileMfgIdx !== -1 && row[fileMfgIdx]) ? row[fileMfgIdx].toString().trim().replace(/\s+/g, ' ') : "";
+/**
+ * Modal display handlers for HTML dialogs
+ */
+function showMainMenuDialog() {
+  const html = HtmlService.createHtmlOutputFromFile('MainMenu').setWidth(700).setHeight(500);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Asset Management Menu');
+}
 
-        // Use Item (Part Number) directly as the Asset ID for Stockroom imports
-        if (isStockroomFile || !assetId) {
-          if (!partNum) continue;
-          assetId = partNum.toUpperCase();
-          if (!loc) loc = "Mezzanine";
-        }
+function showBorrowDialog() {
+  const html = HtmlService.createHtmlOutputFromFile('BorrowDialog').setWidth(700).setHeight(650); 
+  SpreadsheetApp.getUi().showModalDialog(html, 'Borrow Asset');
+}
 
-        if (!assetId) continue;
+function showReturnDialog(assetId) {
+  const template = HtmlService.createTemplateFromFile('ReturnDialog');
+  template.assetId = assetId || '';
+  const html = template.evaluate().setWidth(700).setHeight(500);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Return Asset');
+}
 
-        if (!existingAssetIds.has(assetId)) {
-          // Construct clean row matching Master Sheet's exact column length
-          const newRow = new Array(masterHeaders.length).fill("");
+function showFindDialog() {
+  const html = HtmlService.createHtmlOutputFromFile('FindDialog').setWidth(700).setHeight(500);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Find Asset');
+}
 
-          if (colIndices.partNum !== -1) newRow[colIndices.partNum] = partNum;
-          if (colIndices.desc !== -1) newRow[colIndices.desc] = desc;
-          if (colIndices.assetId !== -1) newRow[colIndices.assetId] = assetId;
-          if (colIndices.extDesc !== -1) newRow[colIndices.extDesc] = extDesc;
-          if (colIndices.location !== -1) newRow[colIndices.location] = loc;
-          if (colIndices.assignedTo !== -1) newRow[colIndices.assignedTo] = "";
-          if (colIndices.status !== -1) newRow[colIndices.status] = "Available";
-          if (colIndices.category !== -1) newRow[colIndices.category] = isStockroomFile ? "RAW MATERIAL" : "EQUIPMENT";
-          if (colIndices.group !== -1) newRow[colIndices.group] = isStockroomFile ? "REELS & SPOOLS" : "TOOLS";
-          if (colIndices.mfg !== -1) newRow[colIndices.mfg] = mfg;
+function showImportDialog() {
+  const html = HtmlService.createHtmlOutputFromFile('ImportDialog').setWidth(700).setHeight(400);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Import New Assets');
+}
 
-          rowsToAdd.push(newRow);
-          newAssetsAdded++;
-          existingAssetIds.add(assetId);
-        }
-      }
-
-      if (rowsToAdd.length > 0) {
-        masterSheet.getRange(masterSheet.getLastRow() + 1, 1, rowsToAdd.length, masterHeaders.length).setValues(rowsToAdd);
-        CacheService.getScriptCache().remove('asset_ids');
-      }
-
-      return `Import complete: ${newAssetsAdded} new records added to Master List.`;
-
-    } catch (e) {
-      return "Error: " + e.toString();
-    } finally {
-      lock.releaseLock();
-    }
+/**
+ * Dynamic Column Index Mapping Helper
+ * Finds zero-based column indices by checking Row 1 header names against multiple aliases
+ */
+function getColumnIndices(headerRow) {
+  if (!headerRow || !Array.isArray(headerRow)) {
+    return {
+      partNum: -1, desc: -1, assetId: -1, extDesc: -1, location: -1,
+      assignedTo: -1, status: -1, category: -1, group: -1, mfg: -1
+    };
   }
+
+  const normalized = headerRow.map(h => h ? h.toString().trim().toUpperCase() : "");
+
+  const find = (possibleNames) => {
+    for (const name of possibleNames) {
+      const idx = normalized.indexOf(name);
+      if (idx !== -1) return idx;
+    }
     return -1;
   };
 
@@ -322,10 +327,10 @@ function importNewAssets(csvText) {
       let loc = (fileLocIdx !== -1 && row[fileLocIdx]) ? row[fileLocIdx].toString().trim().replace(/\s+/g, ' ') : "";
       let mfg = (fileMfgIdx !== -1 && row[fileMfgIdx]) ? row[fileMfgIdx].toString().trim().replace(/\s+/g, ' ') : "";
 
-      if (isStockroomFile) {
+      // Use Item (Part Number) directly as the Asset ID for Stockroom imports
+      if (isStockroomFile || !assetId) {
         if (!partNum) continue;
-        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-        assetId = `SPL-${partNum}-${randomSuffix}`.toUpperCase();
+        assetId = partNum.toUpperCase();
         if (!loc) loc = "Mezzanine";
       }
 
