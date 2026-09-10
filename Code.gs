@@ -2,9 +2,30 @@
 const BORROW_SHEET_NAME = "Borrow Tools";
 const MASTER_SHEET_NAME = "ToExcel_MTL_AssetManagementTable";
 
-// *** CONFIGURATION FOR EXTERNAL JOB DB ***
-const EXTERNAL_JOB_DB_ID = '1vGPJvUOgGu7xEehsXu82QFM04qdo513pW8r3XFnzJRM'; 
-const EXTERNAL_JOB_DB_SHEET_NAMES = ['OOR', 'New Orders', '2026 WK1 to WK52']; 
+// ============================================================================
+// CONFIGURATION: REAL-TIME JOB DATABASE (DIRECT DRIVE & FALLBACK CSVs)
+// ============================================================================
+const EXTERNAL_JOB_DB_ID = '1vGPJvUOgGu7xEehsXu82QFM04qdo513pW8r3XFnzJRM';
+const EXTERNAL_JOB_DB_SHEET_NAMES = ['OOR', 'New Orders', 'STOCK ITEMS'];
+
+// Published CSV endpoints serving as fallbacks if a user lacks direct Drive permissions
+const JOB_DB_CSV_FALLBACKS = [
+  {
+    name: "OOR",
+    gid: "1402212990",
+    url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRVbefWc5DMF-QD7sRDkZfu6-pyEsbkqiq2uekx_0d_zREebFp7tk3BPeqam3HBh3xsT60sXbc2G1hj/pub?gid=1402212990&single=true&output=csv"
+  },
+  {
+    name: "New Orders",
+    gid: "1609933687",
+    url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRVbefWc5DMF-QD7sRDkZfu6-pyEsbkqiq2uekx_0d_zREebFp7tk3BPeqam3HBh3xsT60sXbc2G1hj/pub?gid=1609933687&single=true&output=csv"
+  },
+  {
+    name: "STOCK ITEMS",
+    gid: "1667615887",
+    url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRVbefWc5DMF-QD7sRDkZfu6-pyEsbkqiq2uekx_0d_zREebFp7tk3BPeqam3HBh3xsT60sXbc2G1hj/pub?gid=1667615887&single=true&output=csv"
+  }
+];
 
 /**
  * Creates custom spreadsheet menu on document open
@@ -15,6 +36,8 @@ function onOpen(e) {
       .addItem('Open Main Menu', 'showMainMenuDialog')
       .addSeparator()
       .addItem('Import New Assets', 'showImportDialog')
+      .addSeparator()
+      .addItem('Sync External Job Tabs (OOR / New Orders / Stock)', 'syncJobDatabaseTabs')
       .addToUi();
 }
 
@@ -49,8 +72,8 @@ function showImportDialog() {
 }
 
 /**
- * Dynamic Column Index Mapping Helper
- * Finds zero-based column indices by checking Row 1 header names against multiple aliases
+ * Dynamic Column Index Mapping Helper for Master Asset Sheet
+ * Normalizes header strings and returns zero-based column indices.
  */
 function getColumnIndices(headerRow) {
   if (!headerRow || !Array.isArray(headerRow)) {
@@ -85,42 +108,176 @@ function getColumnIndices(headerRow) {
 }
 
 /**
- * Fetches Item No and Project Coordinator from external sheets based on Job Order
+ * 100% Real-Time Multi-Source Job Details Resolver
+ * 
+ * Order of Operation:
+ *  1. Direct Google Drive Sheet Access (0-second delay; instant updates)
+ *     Searches 'OOR', 'New Orders', and 'STOCK ITEMS' in real time.
+ *  2. Local Workbook Sheets (if user copied/synced tabs locally)
+ *  3. Fallback to Published CSV URLs (if the scanning user lacks Drive access)
  */
 function getJobDetails(jobOrder) {
   if (!jobOrder) return null;
   const cleanJob = jobOrder.toString().trim().toUpperCase();
 
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get(`job_${cleanJob}`);
-  if (cached) return JSON.parse(cached);
-
+  // Tier 1: 100% REAL-TIME DIRECT ACCESS via SpreadsheetApp
   try {
-    const ss = SpreadsheetApp.openById(EXTERNAL_JOB_DB_ID);
-    
+    const extSs = SpreadsheetApp.openById(EXTERNAL_JOB_DB_ID);
     for (const sheetName of EXTERNAL_JOB_DB_SHEET_NAMES) {
-      const sheet = ss.getSheetByName(sheetName);
-      if (!sheet) continue;
-      
-      const data = sheet.getDataRange().getValues();
-      if (data.length < 2) continue;
+      const sheet = extSs.getSheetByName(sheetName);
+      if (!sheet || sheet.getLastRow() < 2) continue;
 
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][7] && data[i][7].toString().trim().toUpperCase() === cleanJob) {
-          const result = {
-            found: true,
-            itemNo: data[i][14] ? data[i][14].toString().trim() : "",
-            projectCoordinator: data[i][19] ? data[i][19].toString().trim() : ""
-          };
-          cache.put(`job_${cleanJob}`, JSON.stringify(result), 300);
-          return result;
-        }
+      const result = searchSheetForJob(sheet, cleanJob, sheetName);
+      if (result && result.found) {
+        return result;
       }
     }
-    return { found: false };
-  } catch (e) {
-    return { error: e.toString() };
+  } catch (driveErr) {
+    console.warn(`Direct Google Drive lookup skipped/inaccessible: ${driveErr}`);
   }
+
+  // Tier 2: Check Local Tabs if synced into the active workbook
+  const activeSs = SpreadsheetApp.getActiveSpreadsheet();
+  for (const sheetName of EXTERNAL_JOB_DB_SHEET_NAMES) {
+    const localSheet = activeSs.getSheetByName(sheetName);
+    if (localSheet && localSheet.getLastRow() > 1) {
+      const result = searchSheetForJob(localSheet, cleanJob, sheetName);
+      if (result && result.found) {
+        return result;
+      }
+    }
+  }
+
+  // Tier 3: Published CSV Fallback (Used when user account lacks Drive permissions)
+  for (const source of JOB_DB_CSV_FALLBACKS) {
+    try {
+      const response = UrlFetchApp.fetch(source.url, { muteHttpExceptions: true });
+      if (response.getResponseCode() !== 200) continue;
+
+      const rows = Utilities.parseCsv(response.getContentText());
+      if (!rows || rows.length < 2) continue;
+
+      const headers = rows[0].map(h => (h ? h.toString().trim().toUpperCase() : ""));
+      const findHeaderIndex = (aliases, defaultIdx) => {
+        for (const alias of aliases) {
+          const idx = headers.indexOf(alias);
+          if (idx !== -1) return idx;
+        }
+        return defaultIdx;
+      };
+
+      const jobCol = findHeaderIndex(["JOB", "JOB ORDER", "JOB ORDER NUMBER", "ORDER", "ORDER NO", "ORDER #", "JOB#", "CO#"], 7);
+      const itemCol = findHeaderIndex(["ITEM", "ITEM NO", "ITEM NO.", "ITEM NUMBER", "ITEM#", "PART NUMBER", "PART NO", "PART"], 14);
+      const coordCol = findHeaderIndex(["PROJECT COORDINATOR", "COORDINATOR", "PROJECT COORD", "PC", "PM"], 19);
+
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (row[jobCol] && row[jobCol].toString().trim().toUpperCase() === cleanJob) {
+          return {
+            found: true,
+            itemNo: (itemCol !== -1 && row[itemCol]) ? row[itemCol].toString().trim() : "",
+            projectCoordinator: (coordCol !== -1 && row[coordCol] && row[coordCol].toString().trim())
+              ? row[coordCol].toString().trim()
+              : (source.name === "STOCK ITEMS" ? "Stock Item" : "N/A"),
+            sourceTab: source.name
+          };
+        }
+      }
+    } catch (csvErr) {
+      console.warn(`CSV fallback failed for ${source.name}: ${csvErr}`);
+    }
+  }
+
+  return { found: false };
+}
+
+/**
+ * High-Speed Real-Time Sheet Search using TextFinder
+ * Scans the Job column directly for sub-second lookup
+ */
+function searchSheetForJob(sheet, cleanJob, tabName) {
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  if (lastRow < 2) return null;
+
+  // Retrieve Row 1 headers to locate columns dynamically
+  const headerRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => (h ? h.toString().trim().toUpperCase() : ""));
+  
+  const findHeaderIndex = (aliases, defaultIdx) => {
+    for (const alias of aliases) {
+      const idx = headerRow.indexOf(alias);
+      if (idx !== -1) return idx;
+    }
+    return defaultIdx;
+  };
+
+  const jobIdx = findHeaderIndex(["JOB", "JOB ORDER", "JOB ORDER NUMBER", "ORDER", "ORDER NO", "ORDER #", "JOB#", "CO#"], 7);
+  const itemIdx = findHeaderIndex(["ITEM", "ITEM NO", "ITEM NO.", "ITEM NUMBER", "ITEM#", "PART NUMBER", "PART NO", "PART"], 14);
+  const coordIdx = findHeaderIndex(["PROJECT COORDINATOR", "COORDINATOR", "PROJECT COORD", "PC", "PM"], 19);
+
+  // Target the specific Job Order column with TextFinder for fast execution
+  const searchRange = (jobIdx !== -1 && jobIdx < lastCol) 
+    ? sheet.getRange(2, jobIdx + 1, lastRow - 1, 1) 
+    : sheet.getDataRange();
+
+  const match = searchRange.createTextFinder(cleanJob).matchEntireCell(true).findNext();
+  if (!match) return null;
+
+  // Read the matching row values
+  const matchedRow = match.getRow();
+  const rowValues = sheet.getRange(matchedRow, 1, 1, lastCol).getValues()[0];
+  
+  const itemNo = (itemIdx !== -1 && rowValues[itemIdx]) ? rowValues[itemIdx].toString().trim() : "";
+  let coordinator = (coordIdx !== -1 && rowValues[coordIdx]) ? rowValues[coordIdx].toString().trim() : "";
+  
+  if (!coordinator && tabName === "STOCK ITEMS") {
+    coordinator = "Stock Item";
+  }
+
+  return {
+    found: true,
+    itemNo: itemNo,
+    projectCoordinator: coordinator || "N/A",
+    sourceTab: tabName
+  };
+}
+
+/**
+ * Utility Function: Downloads the 3 published CSVs into local tabs
+ * Populates tabs 'OOR', 'New Orders', and 'STOCK ITEMS'
+ */
+function syncJobDatabaseTabs() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let syncCount = 0;
+
+  for (const source of JOB_DB_CSV_FALLBACKS) {
+    try {
+      const response = UrlFetchApp.fetch(source.url, { muteHttpExceptions: true });
+      if (response.getResponseCode() !== 200) {
+        console.error(`Failed to fetch ${source.name} (HTTP ${response.getResponseCode()})`);
+        continue;
+      }
+
+      const csvData = Utilities.parseCsv(response.getContentText());
+      if (!csvData || csvData.length === 0) continue;
+
+      let sheet = ss.getSheetByName(source.name);
+      if (!sheet) {
+        sheet = ss.insertSheet(source.name);
+      } else {
+        sheet.clearContents();
+      }
+
+      sheet.getRange(1, 1, csvData.length, csvData[0].length).setValues(csvData);
+      syncCount++;
+    } catch (e) {
+      console.error(`Sync error on tab ${source.name}: ${e}`);
+    }
+  }
+
+  // Clear stale asset caches
+  CacheService.getScriptCache().removeAll(['asset_ids']);
+  ss.toast(`Job Database Sync: Refreshed ${syncCount} of ${JOB_DB_CSV_FALLBACKS.length} tabs.`, 'Sync Completed', 5);
 }
 
 /**
@@ -183,7 +340,7 @@ function processBorrowForm(formObject) {
     }
     masterSheet.getRange(masterRowIndex, colIndices.status + 1).setValue('Checked Out');
 
-    // Add entry to Borrow Sheet in a single batched array write
+    // Add entry to Borrow Sheet in a single batched write
     borrowSheet.insertRowAfter(1);
     const newBorrowRow = [[jobOrder, itemNo, projectCoordinator, assetId, assetDescription, new Date(), ""]];
     borrowSheet.getRange(2, 1, 1, 7).setValues(newBorrowRow);
@@ -259,7 +416,6 @@ function processReturnForm(formObject) {
 
 /**
  * Unified smart importer. Auto-detects file format (Standard Asset CSV vs SyteLine Stockroom Locations CSV).
- * Dynamically builds rows matching whatever columns exist in the Master Sheet.
  */
 function importNewAssets(csvText) {
   const lock = LockService.getScriptLock();
@@ -288,14 +444,15 @@ function importNewAssets(csvText) {
       }
     }
 
-    // Auto-detect delimiter (Tab vs Comma)
-    const delimiter = csvText.includes('\t') ? '\t' : ',';
+    // Robust delimiter detection by sampling the first line
+    const firstLine = csvText.split(/\r\n|\n|\r/)[0] || '';
+    const delimiter = (firstLine.match(/\t/g) || []).length > (firstLine.match(/,/g) || []).length ? '\t' : ',';
+    
     const csvData = Utilities.parseCsv(csvText, delimiter);
     if (csvData.length < 2) return "Error: Uploaded file contains no data rows.";
 
     const fileHeaders = csvData[0];
     
-    // Strict Header Search Helper
     const findExactHeader = (names) => {
       const normalized = fileHeaders.map(h => h ? h.toString().trim().toUpperCase() : "");
       for (const name of names) {
@@ -327,7 +484,6 @@ function importNewAssets(csvText) {
       let loc = (fileLocIdx !== -1 && row[fileLocIdx]) ? row[fileLocIdx].toString().trim().replace(/\s+/g, ' ') : "";
       let mfg = (fileMfgIdx !== -1 && row[fileMfgIdx]) ? row[fileMfgIdx].toString().trim().replace(/\s+/g, ' ') : "";
 
-      // Use Item (Part Number) directly as the Asset ID for Stockroom imports
       if (isStockroomFile || !assetId) {
         if (!partNum) continue;
         assetId = partNum.toUpperCase();
@@ -337,7 +493,6 @@ function importNewAssets(csvText) {
       if (!assetId) continue;
 
       if (!existingAssetIds.has(assetId)) {
-        // Construct clean row matching Master Sheet's exact column length
         const newRow = new Array(masterHeaders.length).fill("");
 
         if (colIndices.partNum !== -1) newRow[colIndices.partNum] = partNum;
