@@ -175,6 +175,9 @@
                     <datalist id="assetIdList"></datalist>
                     <img src="https://lh3.googleusercontent.com/d/16lGNeu2KQRT66rYNb0AoSRsBCxIhwQbL" alt="Asset QR Location" title="Scan Asset ID QR here" class="qr-hint-img">
                 </div>
+                <div id="assetAlertBox" style="display: none; margin-top: 8px; padding: 12px 14px; border-radius: 8px; background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; font-size: 14px; line-height: 1.4; text-align: left;">
+                    <strong>⚠️ Notice:</strong> <span id="assetAlertText"></span>
+                </div>
             </div>
             
             <div class="button-group">
@@ -231,6 +234,7 @@
             document.getElementById('jobOrder').value = '';
             document.getElementById('itemNo').value = '';
             document.getElementById('projectCoordinator').value = '';
+            document.getElementById('assetAlertBox').style.display = 'none';
             
             // Focus on Job Order immediately for continuous barcode scanning
             document.getElementById('jobOrder').focus();
@@ -268,7 +272,40 @@
                      fetchJobDetails(this.value);
                 }
             });
+
+            // ASSET ID LISTENERS (Live note / alert lookup)
+            var assetInput = document.getElementById('assetId');
+            assetInput.addEventListener('input', function() {
+                checkAssetNote(this.value);
+            });
+            assetInput.addEventListener('change', function() {
+                checkAssetNote(this.value);
+            });
+            assetInput.addEventListener('blur', function() {
+                checkAssetNote(this.value);
+            });
         });
+
+        function checkAssetNote(val) {
+            if (!val || !val.trim()) {
+                document.getElementById('assetAlertBox').style.display = 'none';
+                return;
+            }
+            google.script.run
+                .withSuccessHandler(function(note) {
+                    var alertBox = document.getElementById('assetAlertBox');
+                    if (note && note.trim()) {
+                        document.getElementById('assetAlertText').textContent = note.trim();
+                        alertBox.style.display = 'block';
+                    } else {
+                        alertBox.style.display = 'none';
+                    }
+                })
+                .withFailureHandler(function() {
+                    document.getElementById('assetAlertBox').style.display = 'none';
+                })
+                .getAssetNote(val.trim());
+        }
 
         function fetchJobDetails(jobOrderVal) {
              if (!jobOrderVal) return;
