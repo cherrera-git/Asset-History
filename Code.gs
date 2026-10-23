@@ -340,12 +340,21 @@ function processBorrowForm(formObject) {
     }
     masterSheet.getRange(masterRowIndex, colIndices.status + 1).setValue('Checked Out');
 
+    // Retrieve Extended Description / Note if present
+    const extDescription = (colIndices.extDesc !== -1 && masterData[masterRowIndex - 1][colIndices.extDesc])
+      ? masterData[masterRowIndex - 1][colIndices.extDesc].toString().trim()
+      : "";
+
     // Add entry to Borrow Sheet in a single batched write
     borrowSheet.insertRowAfter(1);
     const newBorrowRow = [[jobOrder, itemNo, projectCoordinator, assetId, assetDescription, new Date(), ""]];
     borrowSheet.getRange(2, 1, 1, 7).setValues(newBorrowRow);
 
-    return `Success: Asset '${assetId}' borrowed for Job '${jobOrder}'.`;
+    let returnMessage = `Success: Asset '${assetId}' borrowed for Job '${jobOrder}'.`;
+    if (extDescription) {
+      returnMessage += `\n\n⚠️ NOTICE: ${extDescription}`;
+    }
+    return returnMessage;
 
   } catch (e) {
     return "Error: " + e.toString();
@@ -548,6 +557,7 @@ function findAsset(formObject) {
         let currentStatus = colIndices.status !== -1 ? masterData[i][colIndices.status] : "Unknown";
         let assignedTo = colIndices.assignedTo !== -1 ? masterData[i][colIndices.assignedTo] : "";
         const description = colIndices.desc !== -1 ? masterData[i][colIndices.desc] : "";
+        const extDesc = colIndices.extDesc !== -1 ? masterData[i][colIndices.extDesc] : "";
         const location = colIndices.location !== -1 ? masterData[i][colIndices.location] : "";
         
         let jobOrder = "";
@@ -570,6 +580,7 @@ function findAsset(formObject) {
         }
         
         let message = `Asset ID: ${assetId}\nDescription: ${description}\nLocation: ${location || 'N/A'}\nStatus: ${currentStatus}`;
+        if (extDesc) message += `\nNotice: ${extDesc}`;
         if (currentStatus === 'Checked Out') {
            if (jobOrder) message += `\nJob Order: ${jobOrder}`;
            if (itemNo) message += `\nItem No.: ${itemNo}`;
@@ -614,4 +625,29 @@ function getAssetIds() {
   } catch (e) {
     return [];
   }
+}
+
+/**
+ * Retrieves asset note / extended description for real-time alerts in dialogs
+ */
+function getAssetNote(assetId) {
+  if (!assetId) return "";
+  const cleanId = assetId.toString().trim().toUpperCase();
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const masterSheet = ss.getSheetByName(MASTER_SHEET_NAME);
+    if (!masterSheet) return "";
+    const masterData = masterSheet.getDataRange().getValues();
+    const colIndices = getColumnIndices(masterData[0]);
+    if (colIndices.assetId === -1 || colIndices.extDesc === -1) return "";
+
+    for (let i = 1; i < masterData.length; i++) {
+      if (masterData[i][colIndices.assetId] && masterData[i][colIndices.assetId].toString().trim().toUpperCase() === cleanId) {
+        return masterData[i][colIndices.extDesc] ? masterData[i][colIndices.extDesc].toString().trim() : "";
+      }
+    }
+  } catch (e) {
+    console.warn("Could not fetch asset note: " + e);
+  }
+  return "";
 }
